@@ -4,10 +4,17 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rootRouter from './routes';
 
+import http from 'http';
+import { initSocketServer } from './socket';
+
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const httpServer = http.createServer(app);
+
+// Initialize Realtime Socket.IO Server
+initSocketServer(httpServer);
 
 // Security & Parsing Middlewares
 app.use(helmet());
@@ -41,8 +48,8 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server & Socket.IO running on http://localhost:${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
 });
 
