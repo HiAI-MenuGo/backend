@@ -10,7 +10,7 @@ export interface OrderItemDetail {
   status?: 'PENDING' | 'PREPARING' | 'DONE';
 }
 
-export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'DONE';
+export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'DONE' | 'CANCELLED';
 
 export interface LiveOrder {
   id: string;
@@ -113,7 +113,9 @@ export class OrderService {
     status: LiveOrderStatus,
     branchId: string = 'default-branch'
   ): LiveOrder {
-    const order = activeOrders.find((o) => o.id === orderId && o.branchId === branchId);
+    const order = activeOrders.find(
+      (o) => o.id === orderId && (!branchId || branchId === 'default-branch' || o.branchId === branchId || o.branchId === 'default-branch')
+    );
     if (!order) {
       throw new Error('ORDER_NOT_FOUND');
     }
@@ -127,11 +129,11 @@ export class OrderService {
     }
 
     // Phát tín hiệu Socket.IO đến các máy cùng chi nhánh
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_UPDATED, {
+    emitToBranch(order.branchId || branchId, SOCKET_EVENTS.ORDER_UPDATED, {
       orderId: order.id,
       status: order.status,
       updatedAt: new Date().toISOString(),
-      branchId,
+      branchId: order.branchId || branchId,
     });
 
     return order;
@@ -143,7 +145,9 @@ export class OrderService {
     status: 'PENDING' | 'PREPARING' | 'DONE',
     branchId: string = 'default-branch'
   ) {
-    const order = activeOrders.find((o) => o.id === orderId && o.branchId === branchId);
+    const order = activeOrders.find(
+      (o) => o.id === orderId && (!branchId || branchId === 'default-branch' || o.branchId === branchId || o.branchId === 'default-branch')
+    );
     if (!order) throw new Error('ORDER_NOT_FOUND');
 
     const item = order.items.find((i) => i.id === itemId);
@@ -151,28 +155,36 @@ export class OrderService {
 
     item.status = status;
 
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_ITEM_STATUS, {
+    emitToBranch(order.branchId || branchId, SOCKET_EVENTS.ORDER_ITEM_STATUS, {
       orderId,
       itemId,
       status,
-      branchId,
+      branchId: order.branchId || branchId,
     });
 
     return item;
   }
 
   static voidOrder(orderId: string, reason: string, branchId: string = 'default-branch'): LiveOrder {
-    const index = activeOrders.findIndex((o) => o.id === orderId && o.branchId === branchId);
+    const index = activeOrders.findIndex(
+      (o) => o.id === orderId && (!branchId || branchId === 'default-branch' || o.branchId === branchId || o.branchId === 'default-branch')
+    );
     if (index === -1) {
       throw new Error('ORDER_NOT_FOUND');
     }
 
     const [voidedOrder] = activeOrders.splice(index, 1);
+    voidedOrder.status = 'CANCELLED';
+    voidedOrder.note = (voidedOrder.note ? `${voidedOrder.note} | ` : '') + `[ĐÃ HỦY: ${reason}]`;
 
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_VOIDED, {
+    if (!orderHistory.some((h) => h.id === voidedOrder.id)) {
+      orderHistory.unshift(voidedOrder);
+    }
+
+    emitToBranch(voidedOrder.branchId || branchId, SOCKET_EVENTS.ORDER_VOIDED, {
       orderId: voidedOrder.id,
       reason,
-      branchId,
+      branchId: voidedOrder.branchId || branchId,
       voidedAt: new Date().toISOString(),
     });
 
