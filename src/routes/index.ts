@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes';
+import authRouter from './auth.routes';
 import orderRouter from './order.routes';
 import tableRouter from './table.routes';
 import cashierRouter from './cashier.routes';
@@ -11,6 +12,7 @@ import menuRouter from './menu.routes';
 const rootRouter = Router();
 
 rootRouter.use('/', healthRoutes);
+rootRouter.use('/auth', authRouter);
 rootRouter.use('/orders', orderRouter);
 rootRouter.use('/tables', tableRouter);
 rootRouter.use('/cashier', cashierRouter);

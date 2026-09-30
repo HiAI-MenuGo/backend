@@ -34,7 +34,10 @@ Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và 
 ### Mobile (`mobile/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `mobile/App.tsx` | Root Shell, SafeArea Provider, CartLogic, Custom Tab Navigation | 🟡 Cần kết nối API |
+| `mobile/App.tsx` | Root Shell, SafeArea Provider, CartLogic, Custom Tab Navigation | 🟢 Đã nối AuthGate + Login (30/09/2026) |
+| `mobile/src/theme/index.ts` | Design Tokens: Colors, Radii, Shadows (A quản lý) | 🟢 Đã tạo mới (30/09/2026) |
+| `mobile/src/screens/LoginScreen.tsx` | Đăng nhập nhân viên + SecureStore | 🟢 Đã tạo mới (30/09/2026) |
+| `mobile/src/data/authStore.ts` | Zustand Auth: user/tokens/login/logout/loadFromStorage | 🟢 Đã tạo mới (30/09/2026) |
 | `mobile/src/components/BottomNav.tsx` | Floating Bottom Dock 5 tabs + Badge giỏ hàng | 🟡 Cần kết nối API |
 | `mobile/src/screens/HomeScreen.tsx` | Trang chủ: Doanh thu, Shortcuts, Món bán chạy | 🟡 Cần kết nối API |
 | `mobile/src/screens/RevenueScreen.tsx` | Báo cáo doanh thu: Biểu đồ ngày/tháng/năm, giao dịch | 🟡 Cần kết nối API |
@@ -50,9 +53,10 @@ Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và 
 ### Backend (`backend/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `backend/src/controllers/auth.controller.ts` | Xử lý login, refresh token, get me, đổi mật khẩu | 🟡 Cần hoàn thiện |
-| `backend/src/services/auth.service.ts` | Nghiệp vụ JWT thuần (15m access, 7d refresh HttpOnly, token reuse detection) | 🟡 Cần hoàn thiện |
-| `backend/src/middlewares/auth.middleware.ts` | Xác thực JWT, inject `req.user`, guard phân quyền `requireRole` | 🟡 Cần hoàn thiện |
+| `backend/src/controllers/auth.controller.ts` | Xử lý login, refresh token, get me, đổi mật khẩu | 🟢 Đã hoàn thành (30/09/2026, in-memory chờ Prisma của C) |
+| `backend/src/services/auth.service.ts` | Nghiệp vụ JWT thuần (15m access, 7d refresh HttpOnly, token reuse detection) | 🟢 Đã hoàn thành (30/09/2026) |
+| `backend/src/middlewares/auth.middleware.ts` | Xác thực JWT, inject `req.user`, guard phân quyền `requireRole` | 🟢 Đã hoàn thành (30/09/2026) |
+| `backend/src/routes/auth.routes.ts` | Routes `/api/auth/*` (login/refresh/me/change-password/logout) | 🟢 Đã tạo mới (30/09/2026) |
 | `backend/src/controllers/menu.controller.ts` | CRUD menu items, categories, modifier groups | 🟡 Cần hoàn thiện |
 | `backend/src/services/menu.service.ts` | Nghiệp vụ menu, query lọc theo tenantId & branchId | 🟡 Cần hoàn thiện |
 | `backend/src/controllers/session.controller.ts` | Tạo đơn hàng mới từ bàn, session init | 🟡 Cần hoàn thiện |
@@ -67,6 +71,7 @@ Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và 
 ### 🏗️ GIAI ĐOẠN 1 — Foundation & App Shell (Tuần 1)
 
 #### Task A-001: Tách Mock Data — Chuẩn bị layer kết nối API
+- **Trạng thái:** 🟡 Hoàn thành một phần (30/09/2026) — xong `services/api.ts` (axios instance + interceptor JWT + auth endpoints), `services/auth.service.ts`. Còn lại: `services/menu.service.ts` + refactor `menuStore.ts` sang API thực (sẽ làm ở Cặp 2).
 - **File:** `mobile/src/data/mockData.ts`, `mobile/src/data/menuStore.ts`
 - **Việc làm:**
   1. Tạo file `mobile/src/services/api.ts` — cấu hình `axios` instance với `baseURL` từ biến môi trường (`.env`), interceptor tự động gắn JWT token vào header.
@@ -76,6 +81,7 @@ Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và 
 - **Định nghĩa hoàn thành:** `useMenuStore` load được dữ liệu từ backend `GET /api/menu/items`. Fallback về mock nếu API lỗi.
 
 #### Task A-002: Auth Flow — Đăng nhập & Lưu phiên
+- **Trạng thái:** 🟡 Xong 3/4 (30/09/2026) — xong `authStore.ts` + `LoginScreen.tsx` + `App.tsx AuthGate` + `expo-secure-store`; còn lại nối nút Đăng xuất ở `SettingsScreen.tsx`.
 - **File:** `mobile/App.tsx`, `mobile/src/screens/SettingsScreen.tsx`
 - **Việc làm:**
   1. Cài thêm `expo-secure-store` để lưu JWT Access Token và Refresh Token.
@@ -259,6 +265,7 @@ Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và 
 ### ⚙️ GIAI ĐOẠN 7 — Backend Core APIs (Tuần 1 - Tuần 3)
 
 #### Task A-BE-001: Hệ thống Xác thực Auth & JWT thuần (Bắt buộc không dùng thư viện thứ 3)
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026) — `auth.service/controller/middleware/routes`, access 15m + refresh 7d HttpOnly + rotation/reuse detection, Zod validate, `ApiResponse`. Smoke test login/me/refresh pass. In-memory mock (chờ C thay bằng Prisma).
 - **File:** `backend/src/controllers/auth.controller.ts`, `backend/src/services/auth.service.ts`, `backend/src/middlewares/auth.middleware.ts`, `backend/src/routes/auth.routes.ts`
 - **Yêu cầu kỹ thuật:**
   1. Token Access: Thời hạn 15 phút, chứa `userId`, `tenantId`, `branchId`, `role`.
