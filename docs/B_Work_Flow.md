@@ -4,8 +4,8 @@
 > **Nền tảng:** Mobile App Android (Expo / React Native) + Backend Operations API (Express 5 / Socket.IO)
 > **Thư mục làm việc:** `mobile/` và `backend/`
 > **Nhánh Git:**
-> - Mobile Repo (`mobile.git`): `feat/mobile-android-b` ➔ PR vào `dev`
-> - Backend Repo (`backend.git`): `feat/be-cashier-kds-b` ➔ PR vào `dev`
+> - Mobile Repo (`mobile.git`): `feat/mobile-android-b` ➔ 🟢 Đã hoàn thành & Merge vào `dev` qua PR #1 (30/09/2026)
+> - Backend Repo (`backend.git`): `feat/be-cashier-kds-b` ➔ 🟢 Đã code xong (Commit `71b83c6`), chờ PR vào `dev`
 
 ---
 
@@ -36,28 +36,28 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### Mobile (`mobile/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `mobile/src/screens/OperationsScreen.tsx` | Hub trung tâm: Grid 6 tính năng, routing sub-views | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/OrdersScreen.tsx` | Đơn live: Kanban PENDING/CONFIRMED/DONE, Countdown | 🟡 Cần kết nối Socket.IO |
-| `mobile/src/screens/operations/CashierScreen.tsx` | Thu ngân: CASH/VIETQR, đếm ngược QR, in bill | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/SoldOutScreen.tsx` | Báo hết món: Toggle trạng thái từng món | 🟡 Cần kết nối Socket.IO |
-| `mobile/src/screens/operations/InventoryScreen.tsx` | Kho nguyên liệu: Tồn kho, cảnh báo ngưỡng, điều chỉnh | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/HistoryScreen.tsx` | Lịch sử đơn: Search, filter ngày, chi tiết đơn | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/PrepTimeDetailScreen.tsx` | Countdown chế biến theo từng đơn | 🟡 Cần kết nối Socket.IO |
-| `mobile/src/screens/operations/ModifierDetailScreen.tsx` | Chi tiết & CRUD Modifier Group | 🟡 Cần kết nối API |
-| `mobile/src/data/historyStore.ts` | Zustand Store: lịch sử đơn hàng | 🟡 Cần kết nối API |
+| `mobile/src/screens/OperationsScreen.tsx` | Hub trung tâm: Grid 6 tính năng, routing sub-views | 🟢 Đã hoàn thành (PR #1 - Commit `04cbd24`, `60d778b`) |
+| `mobile/src/screens/operations/OrdersScreen.tsx` | Đơn live: Kanban PENDING/CONFIRMED/DONE, Countdown | 🟢 Đã hoàn thành (PR #1 - Commit `04cbd24`) |
+| `mobile/src/screens/operations/CashierScreen.tsx` | Thu ngân: CASH/VIETQR, đếm ngược QR, in bill | 🟢 Đã hoàn thành (PR #1 - Commit `04cbd24`) |
+| `mobile/src/screens/operations/SoldOutScreen.tsx` | Báo hết món: Toggle trạng thái từng món | 🟢 Đã hoàn thành (PR #1 - Commit `60d778b`) |
+| `mobile/src/screens/operations/InventoryScreen.tsx` | Kho nguyên liệu: Tồn kho, cảnh báo ngưỡng, điều chỉnh | 🟢 Đã hoàn thành (PR #1 - Commit `60d778b`) |
+| `mobile/src/screens/operations/HistoryScreen.tsx` | Lịch sử đơn: Search, filter ngày, chi tiết đơn | 🟢 Đã hoàn thành (PR #1 - Commit `60d778b`) |
+| `mobile/src/screens/operations/PrepTimeDetailScreen.tsx` | Countdown chế biến theo từng đơn | 🟢 Đã hoàn thành (PR #1 - Commit `60d778b`) |
+| `mobile/src/screens/operations/ModifierDetailScreen.tsx` | Chi tiết & CRUD Modifier Group | 🟢 Đã hoàn thành (PR #1 - Commit `e3b1541`) |
+| `mobile/src/screens/operations/TablesScreen.tsx` | Sơ đồ bàn realtime | 🟢 Đã hoàn thành (PR #1 - Commit `60d778b`) |
 
 ### Backend (`backend/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `backend/src/socket/index.ts` | Khởi tạo Socket.IO server, join rooms theo tenantId/branchId | 🟡 Cần hoàn thiện |
-| `backend/src/socket/events.ts` | Định nghĩa & dispatch 11 event Socket.IO chuẩn | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/order.controller.ts` | Quản lý đơn live, chuyển trạng thái Kanban KDS, void đơn | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/cashier.controller.ts` | Thanh toán CASH, tạo mã VietQR, xác nhận thanh toán | 🟡 Cần hoàn thiện |
-| `backend/src/services/payment/vietqr.service.ts` | Xử lý sinh QR động & Webhook đối soát giao dịch | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/table.controller.ts` | Danh sách bàn, trạng thái bàn, sơ đồ khu vực | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/ingredient.controller.ts` | Quản lý kho, tồn kho, điều chỉnh số lượng | 🟡 Cần hoàn thiện |
-| `backend/src/services/inventory.service.ts` | Logic khấu trừ nguyên liệu BOM tự động | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/customer.controller.ts` | Tra cứu thành viên, tích lũy điểm thưởng | 🟡 Cần hoàn thiện |
+| `backend/src/socket/index.ts` | Khởi tạo Socket.IO server, join rooms theo tenantId/branchId | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/socket/events.ts` | Định nghĩa & dispatch 11 event Socket.IO chuẩn | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/controllers/order.controller.ts` | Quản lý đơn live, chuyển trạng thái Kanban KDS, void đơn | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/controllers/cashier.controller.ts` | Thanh toán CASH, tạo mã VietQR, xác nhận thanh toán | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/services/payment/vietqr.service.ts` | Xử lý sinh QR động & Webhook đối soát giao dịch | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/controllers/table.controller.ts` | Danh sách bàn, trạng thái bàn, sơ đồ khu vực | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/controllers/ingredient.controller.ts` | Quản lý kho, tồn kho, điều chỉnh số lượng | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/services/inventory.service.ts` | Logic khấu trừ nguyên liệu BOM tự động | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
+| `backend/src/controllers/customer.controller.ts` | Tra cứu thành viên, tích lũy điểm thưởng | 🟢 Đã code xong (Commit `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`) |
 
 
 ---
@@ -67,6 +67,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 🏗️ GIAI ĐOẠN 1 — Android Setup & Foundation (Tuần 1)
 
 #### Task B-001: Android Status Bar & Navigation Bar Chuẩn
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/App.tsx`, tất cả màn hình phụ trách
 - **Việc làm:**
   1. Kiểm tra `useSafeAreaInsets()` hoạt động đúng trên Android (Status Bar 24dp thay vì 44pt như iOS).
@@ -76,6 +77,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Tất cả màn hình hiển thị đúng trên Android không bị tràn hoặc bị che bởi System Bar.
 
 #### Task B-002: Cài đặt & Cấu hình Socket.IO Client
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/hooks/useSocket.ts` *(tạo mới)*
 - **Việc làm:**
   1. Cài package: `npm install socket.io-client`
@@ -94,6 +96,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Socket kết nối ổn định, tự reconnect khi mất mạng, không gây memory leak khi unmount component.
 
 #### Task B-003: Cài đặt Audio Alert cho đơn mới
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `234fc10`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/hooks/useSocket.ts`, `mobile/src/screens/operations/OrdersScreen.tsx`
 - **Việc làm:**
   1. Cài package: `expo-audio` hoặc `expo-av`.
@@ -108,6 +111,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 🏢 GIAI ĐOẠN 2 — OperationsScreen Hub & Routing (Tuần 1-2)
 
 #### Task B-004: OperationsScreen Hub — Kết nối dữ liệu thực
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/OperationsScreen.tsx`
 - **API cần dùng:**
   ```
@@ -125,6 +129,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Các badge số liệu trên Hub luôn phản ánh trạng thái thực tế, cập nhật <2s khi có đơn mới.
 
 #### Task B-005: TablesScreen — Sơ Đồ Bàn Realtime
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/TablesScreen.tsx` *(tạo mới hoặc hoàn thiện)*
 - **API & Socket cần dùng:**
   ```
@@ -145,6 +150,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 📋 GIAI ĐOẠN 3 — OrdersScreen — Đơn Hàng Live (Tuần 2)
 
 #### Task B-006: OrdersScreen — Kết nối Socket.IO Đơn Live
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/OrdersScreen.tsx`
 - **API & Socket cần dùng:**
   ```
@@ -165,6 +171,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Đơn hàng mới xuất hiện <1s, countdown chạy mượt không giật, trạng thái bếp đồng bộ từ KDS Web.
 
 #### Task B-007: OrdersScreen — Hành Động Trên Đơn (Confirm, Done, Void)
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/OrdersScreen.tsx`
 - **API cần dùng:**
   ```
@@ -186,6 +193,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 💰 GIAI ĐOẠN 4 — CashierScreen — Thu Ngân Di Động (Tuần 2-3)
 
 #### Task B-008: CashierScreen — Danh Sách Đơn Chờ Thanh Toán
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/CashierScreen.tsx`
 - **API cần dùng:**
   ```
@@ -200,6 +208,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Thu ngân thấy được tất cả bàn đang chờ thanh toán, cập nhật tự động khi có bàn mới.
 
 #### Task B-009: CashierScreen — Thanh Toán Tiền Mặt
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/CashierScreen.tsx`
 - **API cần dùng:**
   ```
@@ -216,6 +225,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Thanh toán tiền mặt hoàn tất trong <3s, hiển thị chính xác số tiền thối.
 
 #### Task B-010: CashierScreen — Thanh Toán VietQR
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `04cbd24`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/CashierScreen.tsx`
 - **API & Socket cần dùng:**
   ```
@@ -238,6 +248,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 🚫 GIAI ĐOẠN 5 — SoldOut, Inventory, History (Tuần 3)
 
 #### Task B-011: SoldOutScreen — Toggle Hết Món Realtime
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/SoldOutScreen.tsx`
 - **API & Socket cần dùng:**
   ```
@@ -256,6 +267,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Bật "Hết hàng" trên mobile → khách không thể thêm món đó vào giỏ trên Web QR Menu trong <2s.
 
 #### Task B-012: InventoryScreen — Quản Lý Kho Nguyên Liệu
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/InventoryScreen.tsx`
 - **API cần dùng:**
   ```
@@ -274,6 +286,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Nhân viên kho có thể kiểm kê và điều chỉnh số lượng nguyên liệu từ điện thoại Android ngay tại kho.
 
 #### Task B-013: HistoryScreen — Lịch Sử & Tra Cứu Đơn
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/HistoryScreen.tsx`, `mobile/src/data/historyStore.ts`
 - **API cần dùng:**
   ```
@@ -293,6 +306,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### 🔧 GIAI ĐOẠN 6 — ModifierDetailScreen & PrepTime (Tuần 3-4)
 
 #### Task B-014: ModifierDetailScreen — CRUD Modifier Group
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `e3b1541`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/ModifierDetailScreen.tsx`
 - **API cần dùng:**
   ```
@@ -311,6 +325,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** CRUD Modifier Group hoàn chỉnh từ mobile, thứ tự tùy chỉnh, đồng bộ với Web Admin.
 
 #### Task B-015: PrepTimeDetailScreen — Countdown Chế Biến
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `60d778b`, merged PR #1 vào `dev`)
 - **File:** `mobile/src/screens/operations/PrepTimeDetailScreen.tsx`
 - **Việc làm:**
   1. Nhận `prepTimeMinutes` từ props, chạy countdown ngược `prepTimeMinutes × 60` giây.
@@ -324,6 +339,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### ⚙️ GIAI ĐOẠN 7 — Backend Operations & Realtime (Tuần 1 - Tuần 3)
 
 #### Task B-BE-001: Socket.IO Server & Kiến Trúc Multi-tenant Room
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/socket/index.ts`, `backend/src/socket/events.ts`
 - **Yêu cầu kỹ thuật:**
   1. Gắn Socket.IO vào chung HTTP server với Express 5.
@@ -333,6 +349,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Socket kết nối được từ cả Web và Mobile, bắn event đến đúng room chi nhánh, không rò rỉ sang tenant khác.
 
 #### Task B-BE-002: Live Orders Management & KDS Kanban API
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/controllers/order.controller.ts`, `backend/src/services/order.service.ts`, `backend/src/routes/order.routes.ts`
 - **Endpoints:**
   - `GET /api/orders/active?branchId=` (hỗ trợ query param `view=kanban|list`)
@@ -343,6 +360,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Thao tác chuyển trạng thái đơn trên mobile/web phản hồi <200ms và đồng bộ tức thì qua Socket.IO.
 
 #### Task B-BE-003: Cashier & VietQR Dynamic Payment Engine
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/controllers/cashier.controller.ts`, `backend/src/services/payment/vietqr.service.ts`, `backend/src/routes/cashier.routes.ts`
 - **Endpoints:**
   - `POST /api/cashier/pay`: Thanh toán tiền mặt CASH, đóng session bàn, tạo Payment record.
@@ -351,6 +369,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Luồng thanh toán tiền mặt và VietQR chạy trơn tru, webhook tự động xác nhận đơn.
 
 #### Task B-BE-004: Tables & Floor Management API
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/controllers/table.controller.ts`, `backend/src/routes/table.routes.ts`
 - **Endpoints:**
   - `GET /api/tables?branchId=`: Trả về danh sách bàn, trạng thái (EMPTY/OCCUPIED/RESERVED), tổng tiền tạm tính hiện tại.
@@ -358,6 +377,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Bàn đổi trạng thái cập nhật ngay lập tức trên TablesScreen của Mobile và POS của Web.
 
 #### Task B-BE-005: Inventory & BOM Auto-deduction Engine
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/controllers/ingredient.controller.ts`, `backend/src/services/inventory.service.ts`, `backend/src/routes/ingredient.routes.ts`
 - **Nghiệp vụ:**
   - `GET /api/ingredients`: Danh sách tồn kho theo chi nhánh.
@@ -366,6 +386,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 - **Định nghĩa hoàn thành:** Kho tự động khấu trừ chính xác theo định lượng, cảnh báo kịp thời khi nguyên liệu sắp hết.
 
 #### Task B-BE-006: Khách hàng & Loyalty Point Engine
+- **Trạng thái:** 🟢 Đã code xong (30/09/2026 - Commit: `71b83c6` trên `feat/be-cashier-kds-b`, chờ PR vào `dev`)
 - **File:** `backend/src/controllers/customer.controller.ts`, `backend/src/services/customer.service.ts`, `backend/src/routes/customer.routes.ts`
 - **Nghiệp vụ:** Tra cứu thông tin khách theo SĐT, lưu lịch sử chi tiêu, cộng điểm thưởng (ví dụ: 10,000 VNĐ = 1 điểm) và chiết khấu hạng thành viên khi thanh toán tại cashier.
 - **Định nghĩa hoàn thành:** Thu ngân nhập SĐT là thấy ngay tên và số điểm tích lũy của khách.
@@ -375,6 +396,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
 ### ✅ GIAI ĐOẠN 8 — Android Build & Release (Tuần 4)
 
 #### Task B-016: Kiểm Thử Android Toàn Diện
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `644fb62`, merged PR #1 vào `dev`)
 - Chạy tất cả màn hình trên các thiết bị: Pixel 7 (Android 14), Galaxy S24 (One UI), Redmi Note 12 (MIUI).
 - Kiểm tra:
   - Phím ảo (Soft Keyboard) không che các Input trong CashierScreen khi nhập số tiền.
@@ -383,6 +405,7 @@ Thành viên B chịu trách nhiệm phối hợp giữa **Mobile App Android** 
   - App không crash khi xoay ngang màn hình (nếu hỗ trợ).
 
 #### Task B-017: Android Build Config (EAS Build)
+- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026 - Commit: `644fb62`, merged PR #1 vào `dev`)
 - Cấu hình `eas.json` profile `preview` cho Android APK internal testing.
 - Tạo build APK upload lên Google Play Internal Testing.
 - Commit cuối: `feat(android): production-ready android build configuration`
