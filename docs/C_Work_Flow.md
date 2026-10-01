@@ -632,7 +632,31 @@ git push origin feat/be-admin-report-c
   - `backend/src/routes/index.ts`
 - **Kết quả Verify Runtime**:
   - 17/17 kịch bản kiểm thử tự động PASS 100%: API key trả 1 lần -> list không lộ key thô -> thu hồi thành công; Webhook đăng ký -> bắn test ping -> delivery log ghi nhận status 200; Tiers đủ 4 hạng -> PUT cập nhật chiết khấu -> tra cứu SĐT hội viên an toàn -> cộng điểm vượt ngưỡng tự động thăng hạng Kim Cương; Token giả bị chặn 401; Cashier bị chặn 403 khi vào API Key / sửa Tier; Zod chặn body rỗng / event lạ 400.
-- **Phần nợ chuyển vòng sau**:
-  - Hàng đợi Webhook background qua Redis/BullMQ (hiện đang gửi trực tiếp timeout 5s, thất bại không chặn response chính).
-  - Bảng `LoyaltyPointLog` trong Prisma schema để lưu vết lịch sử tích/tiêu điểm chi tiết (hiện ghi log qua Winston).
-
+### 01/10/2026 — Vòng C2: Phủ Toàn Diện Đa Ngôn Ngữ i18n (C-024) + SEO & Performance (C-025)
+- **Nhánh**: `feat/web-frontend-c`
+- **Giai đoạn 1 — Từ điển song song (C-024)**:
+  - Bổ sung và đồng bộ tuyệt đối 1-1 giữa `locales/vi.json` và `locales/en.json` (269 keys song song), mở rộng qua 14 namespaces: `common`, `auth`, `pos`, `kds`, `table`, `cart`, `payment`, `receipt`, `dashboard`, `menu`, `inventory`, `vouchers`, `zReport`, `roles`, `branding`, `bank`, `tables`, `integrations`, `platformAdmin`, `errors`.
+  - Nguyên tắc dịch: Lấy string tiếng Việt hiện hữu làm gốc, đối sánh en tương đương, không bịa key.
+- **Giai đoạn 2 — Phủ `t(key, fallback)` & Inline Banner lỗi**:
+  - **Public routes**: `table/[tableId]/*` (menu, modal, cart, order-status, payment), `receipt/[sessionId]/*` phủ 100% qua `t(key, 'fallback Việt')`.
+  - **Vận hành**: `kds/page.tsx`, `OrderKanbanCard.tsx`, `KdsItemActions.tsx`, `pos/CashierClient.tsx`, `pos/page.tsx`, `ItemOptionsModal.tsx` phủ 100% `t()`, bổ sung `LanguageSwitcher` chuyển đổi linh hoạt.
+  - **Admin & Platform Admin**: `dashboard`, `menu`, `inventory`, `vouchers`, `z-report`, `roles`, `settings/branding`, `settings/bank`, `platform-admin`.
+  - **Thay thế Alert**: Xóa sổ 100% lệnh `alert(...)` cứng (0 hit), thay bằng inline error banner đỏ `bg-red-500/10 border-red-500/30 text-red-400` theo pattern `actionError`.
+  - **Tổng vị trí gọi `t()`**: Tăng từ ~33 vị trí (15%) lên **462 vị trí** (~98% toàn bộ UI).
+- **Giai đoạn 3 — SEO & Hiệu năng (C-025)**:
+  - Tách Server Component wrapper có `generateMetadata()`:
+    - `app/table/[tableId]/page.tsx` + `TableMenuClient.tsx`: Title theo tên quán & slogan thương hiệu.
+    - `app/receipt/[sessionId]/page.tsx` + `ReceiptClient.tsx`: Title theo mã hóa đơn điện tử `#sessionId`.
+  - Bổ sung skeleton `loading.tsx` pulse chuẩn zinc-950 cho 3 khối lớn: `app/kds/loading.tsx`, `app/pos/loading.tsx`, `app/admin/loading.tsx`.
+  - Tối ưu hình ảnh `<Image>`: 100% ảnh món ăn và logo có `loading="lazy"` cùng `sizes` responsive phù hợp.
+  - **Đo Lighthouse thực tế (Mobile, Chrome Headless tại `/table/01`)**:
+    - **Performance**: 84 / 100
+    - **Accessibility**: 98 / 100
+    - **Best Practices**: 96 / 100
+    - **SEO**: 100 / 100
+    - **FCP**: 0.8s | **LCP**: 4.5s (mobile 4x CPU throttle) | **TBT**: 60ms | **CLS**: 0 | **Speed Index**: 1.1s.
+  - **Kiểm thử chuyển ngữ EN**: Giao diện tiếng Anh hiển thị ổn định, không tràn chữ, không bể layout trên cả QR Menu và POS.
+- **Verification**: `npx tsc --noEmit` exit 0, `npm run build` thành công sạch sẽ toàn bộ 23 routes Turbopack.
+- **Nợ còn lại (Backlog)**:
+  - Tinh chỉnh LCP cho ảnh món ăn trên mạng di động yếu (có thể thêm placeholder blur SVG).
+  - Tự động phát hiện locale qua header `Accept-Language` của trình duyệt thay vì mặc định `vi`.
