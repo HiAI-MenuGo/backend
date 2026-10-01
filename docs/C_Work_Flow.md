@@ -35,41 +35,45 @@ Thành viên C chịu trách nhiệm phối hợp giữa **Web Platform Fullstac
 ### Web Frontend (`frontend/`)
 | File / Thư mục | Mô tả | Trạng thái |
 |----------------|--------|------------|
-| `app/table/[tableId]/page.tsx` | QR Menu khách hàng tại bàn | 🟡 Đang hoàn thiện |
-| `app/table/[tableId]/MenuItemList.tsx` | Danh sách món, grid 2 cột | 🟡 Đang hoàn thiện |
-| `app/table/[tableId]/CustomerItemOptionsModal.tsx` | Modal tùy chọn Đường/Đá/Size/Topping | 🟡 Đang hoàn thiện |
-| `app/table/hooks/useMenuSoldOut.ts` | Hook đồng bộ sold-out realtime | 🟡 Đang hoàn thiện |
-| `app/kds/page.tsx` | Kitchen Display System | 🟡 Đang hoàn thiện |
-| `app/pos/page.tsx` | POS toàn màn hình | 🟡 Đang hoàn thiện |
-| `app/pos/CashierClient.tsx` | Client component thu ngân | 🟡 Đang hoàn thiện |
-| `app/pos/ItemOptionsModal.tsx` | Modal tùy chỉnh món cho POS | 🟡 Đang hoàn thiện |
-| `app/pos/cashier/page.tsx` | Layout cashier riêng | 🟡 Đang hoàn thiện |
-| `app/admin/dashboard/page.tsx` | Dashboard Admin tổng quan | 🟡 Đang hoàn thiện |
-| `app/admin/menu/page.tsx` | Quản lý thực đơn Admin | 🟡 Đang hoàn thiện |
-| `app/admin/inventory/page.tsx` | Quản lý kho BOM | 🟡 Đang hoàn thiện |
-| `app/admin/vouchers/page.tsx` | Mã giảm giá & Loyalty | 🟡 Đang hoàn thiện |
-| `app/admin/z-report/page.tsx` | Báo cáo kết ca | 🟡 Đang hoàn thiện |
-| `app/admin/settings/` | Cài đặt nhà hàng, Branding, Ngân hàng | 🟡 Đang hoàn thiện |
-| `app/admin/roles/page.tsx` | Quản lý nhân sự & phân quyền | 🟡 Đang hoàn thiện |
-| `app/admin/integrations/page.tsx` | API Keys & Webhook | 🟡 Đang hoàn thiện |
-| `app/platform-admin/` | SaaS Platform Admin | 🟡 Đang hoàn thiện |
-| `app/receipt/[sessionId]/page.tsx` | Hóa đơn thanh toán | 🟡 Đang hoàn thiện |
-| `components/floor/TableQRCode.tsx` | Tạo mã QR bàn ăn (level H) | 🟡 Đang hoàn thiện |
-| `components/inventory/BomEditor.tsx` | Editor định lượng nguyên liệu | 🟡 Đang hoàn thiện |
-| `components/print/KitchenTicketTemplate.tsx` | Mẫu phiếu in bếp nhiệt | 🟡 Đang hoàn thiện |
-| `components/print/ReceiptPrintTemplate.tsx` | Mẫu hóa đơn thanh toán nhiệt | 🟡 Đang hoàn thiện |
+| `app/table/[tableId]/page.tsx` | QR Menu khách hàng tại bàn | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/[tableId]/MenuItemList.tsx` | Danh sách món, grid 2 cột | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/[tableId]/CustomerItemOptionsModal.tsx` | Modal tùy chọn Đường/Đá/Size/Topping | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/hooks/useMenuSoldOut.ts` | Hook đồng bộ sold-out realtime | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/kds/page.tsx` | Kitchen Display System | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/page.tsx` | POS toàn màn hình | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/CashierClient.tsx` | Client component thu ngân | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/ItemOptionsModal.tsx` | Modal tùy chỉnh món cho POS | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/cashier/page.tsx` | Layout cashier riêng | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/dashboard/page.tsx` | Dashboard Admin tổng quan | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/menu/page.tsx` | Quản lý thực đơn Admin | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/inventory/page.tsx` | Quản lý kho BOM | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/vouchers/page.tsx` | Mã giảm giá & Loyalty | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/z-report/page.tsx` | Báo cáo kết ca | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/settings/` | Cài đặt nhà hàng, Branding, Ngân hàng | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/roles/page.tsx` | Quản lý nhân sự & phân quyền | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/tables/page.tsx` | Sơ đồ bàn & Mã QR bàn | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/platform-admin/` | SaaS Platform Admin | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/receipt/[sessionId]/page.tsx` | Hóa đơn thanh toán | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `components/floor/TableQRCode.tsx` | Tạo mã QR bàn ăn (level H) | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `components/inventory/BomEditor.tsx` | Editor định lượng nguyên liệu | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `stores/auth.store.ts` | Zustand Auth & User store | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `stores/cart.store.ts` | Zustand Cart store với modifiers | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `context/i18nContext.tsx` | Đa ngôn ngữ Việt / Anh | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
 
 ### Backend (`backend/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `backend/prisma/schema.prisma` | ~40 Models CSDL Multi-tenant & Migrations | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/platform.controller.ts` | Quản lý tenants và gói cước SaaS | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/user.controller.ts` | Quản lý danh sách nhân sự, phân quyền vai trò | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/zreport.controller.ts` | Tổng hợp báo cáo kết ca, đối soát tài chính | 🟡 Đang hoàn thiện |
-| `backend/src/services/zreport.service.ts` | Tính toán doanh thu ca & xuất PDF / Excel | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/voucher.controller.ts` | Động cơ kiểm tra & áp dụng mã giảm giá | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/branding.controller.ts` | Tùy biến thông tin quán, logo, màu sắc, ngân hàng | 🟡 Đang hoàn thiện |
+| `backend/prisma/schema.prisma` | ~40 Models CSDL Multi-tenant & Migrations | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/prisma/seed.ts` | Script Seeder dữ liệu mẫu | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/platform.controller.ts` | Quản lý tenants và gói cước SaaS | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/user.controller.ts` | Quản lý danh sách nhân sự, phân quyền vai trò | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/zreport.controller.ts` | Tổng hợp báo cáo kết ca, đối soát tài chính | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/services/zreport.service.ts` | Tính toán doanh thu ca & xuất báo cáo | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/voucher.controller.ts` | Động cơ kiểm tra & áp dụng mã giảm giá | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/branding.controller.ts` | Tùy biến thông tin quán, logo, màu sắc, ngân hàng | 🟢 Đã hoàn thành (Commit `6f61604`) |
 | `backend/src/utils/response.ts` | Helper chuẩn hóa ApiResponse toàn dự án | 🟢 Dùng chung |
+| `backend/src/utils/logger.ts` | Winston Structured Logger | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/middlewares/validate.ts` | Zod Validation Middleware | 🟢 Đã hoàn thành (Commit `6f61604`) |
 
 
 ---
