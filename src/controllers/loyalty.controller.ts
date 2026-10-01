@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
-
-const prisma = new PrismaClient();
 
 export const updateTierSchema = z.object({
   params: z.object({
@@ -28,6 +26,9 @@ export const adjustPointsSchema = z.object({
     phone: z.string().min(8, 'Số điện thoại không hợp lệ'),
     orderId: z.string().optional(),
     pointsDelta: z.number().int('Số điểm phải là số nguyên'),
+    // Tên khách khi tạo mới (khách vãng lai tích điểm lần đầu không cần đăng ký — BUSINESS §6).
+    // Bỏ trống thì dùng SĐT làm tên tạm để tránh tên giả đánh lừa nghiệp vụ.
+    name: z.string().min(1).optional(),
   }),
 });
 
@@ -155,13 +156,14 @@ export class LoyaltyController {
   static async adjustPoints(req: Request, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
-      const { phone, orderId, pointsDelta } = req.body;
+      const { phone, orderId, pointsDelta, name } = req.body;
 
       if (!tenantId) {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
       }
 
-      // Tìm customer hoặc tự tạo mới nếu chưa tồn tại
+      // Tìm customer, cho phép tạo mới khách vãng lai (cờ isNewCustomer để UI biết).
+      let isNewCustomer = false;
       let customer = await prisma.customer.findUnique({
         where: {
           tenantId_phone: {
@@ -173,7 +175,9 @@ export class LoyaltyController {
       });
 
       if (!customer) {
-        // Tìm hạng thấp nhất (thường là minPoints = 0)
+        // Khách vãng lai tích điểm lần đầu: cho phép tạo mới đúng nghiệp vụ
+        // "không cần đăng ký" (BUSINESS §6), nhưng cờ isNewCustomer để UI biết.
+        isNewCustomer = true;
         const defaultTier = await prisma.membershipTier.findFirst({
           where: { tenantId },
           orderBy: { minPoints: 'asc' },
@@ -183,7 +187,7 @@ export class LoyaltyController {
           data: {
             tenantId,
             phone,
-            name: `Khách hàng ${phone.slice(-4)}`,
+            name: name?.trim() || phone,
             loyaltyPoints: 0,
             totalSpent: 0,
             tierId: defaultTier?.id,
@@ -191,6 +195,7 @@ export class LoyaltyController {
           include: { tier: true },
         });
       }
+      // isNewCustomer đã set true trong nhánh tạo mới ở trên.
 
       const newPoints = Math.max(0, customer.loyaltyPoints + pointsDelta);
 
@@ -231,6 +236,7 @@ export class LoyaltyController {
         phone: updatedCustomer.phone,
         points: updatedCustomer.loyaltyPoints,
         pointsDelta,
+        isNewCustomer,
         tier: updatedCustomer.tier
           ? {
               id: updatedCustomer.tier.id,

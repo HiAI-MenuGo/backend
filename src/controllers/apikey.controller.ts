@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
-
-const prisma = new PrismaClient();
 
 export const createApiKeySchema = z.object({
   body: z.object({

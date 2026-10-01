@@ -603,6 +603,11 @@ git push origin feat/be-admin-report-c
 - Token giả mạo → 401. (Lưu ý: validate public cần `tenantId` trong body khi chưa đăng nhập, thiếu thì `MISSING_FIELDS`.)
 - Đính chính: mã lỗi thiếu `orderId` là `INVALID_PARAMS`; HEAD backend tra cứu bằng `git log` (không chốt số trong docs).
 
+#### ✅ Fix follow-up review C1 (shared Prisma, dead import, adjustPoints)
+- 3 controllers C1 (`apikey`, `webhook`, `loyalty`) dùng chung `utils/prisma` thay vì `new PrismaClient()` riêng — hết nguy cơ leak connection.
+- Xóa import chết `customerRouter` (ghi chú Team B migration trong `routes/index.ts`); file mock B giữ nguyên.
+- `POST /api/customers/points`: thêm `name?` optional, tên mặc định = SĐT (không tên giả), trả cờ `isNewCustomer`. Verify runtime: SĐT mới → `isNewCustomer=true`, gọi lại → `false`, điểm cộng dồn đúng; test customer đã dọn sạch.
+
 ### 01/10/2026 — Vòng Backend P0: API Keys, Webhooks Delivery, Loyalty/Tiers & Idempotent Area/Table Seed (Backend `35b9823`)
 - **Việc 1 — API Keys & Webhooks (C-022)**:
   - `src/controllers/apikey.controller.ts` & `src/routes/apikey.routes.ts`: `GET /api/api-keys` (scope tenantId, chỉ trả prefix/permissions, không lộ key thô và keyHash), `POST /api/api-keys` (Zod validate, sinh key `mgk_<32 hex>`, lưu SHA-256 hash + prefix 8 ký tự, trả key thô đúng 1 lần trong response tạo), `DELETE /api/api-keys/:id` (thu hồi `isActive=false`).

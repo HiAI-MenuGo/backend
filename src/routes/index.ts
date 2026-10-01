@@ -6,7 +6,10 @@ import tableRouter from './table.routes';
 import cashierRouter from './cashier.routes';
 import sessionRouter from './session.routes';
 import ingredientRouter from './ingredient.routes';
-import customerRouter from './customer.routes';
+// NOTE(Team B migration): customer.routes (mock) chưa được mount —
+// /api/customers hiện do loyaltyCustomerRouter (C, Prisma thật) phục vụ.
+// Team B migrate xong thì xóa file customer.routes.ts + customer.controller.ts mock.
+// import customerRouter from './customer.routes';
 import menuRouter from './menu.routes';
 
 import platformRouter from './platform.routes';
