@@ -601,5 +601,33 @@ git push origin feat/be-admin-report-c
 - `POST /api/auth/login` (admin@menu-go.vn) → 200, role ADMIN.
 - `POST /api/vouchers/validate` sai mã → `INVALID_VOUCHER`; `GIAM30K`/`subTotal=200000` → success, `discountAmount=30000`.
 - Token giả mạo → 401. (Lưu ý: validate public cần `tenantId` trong body khi chưa đăng nhập, thiếu thì `MISSING_FIELDS`.)
-- Đính chính: mã lỗi thiếu `orderId` là `INVALID_PARAMS`; HEAD backend tra cứu bằng `git log` (không chốt số trong docs).`
+- Đính chính: mã lỗi thiếu `orderId` là `INVALID_PARAMS`; HEAD backend tra cứu bằng `git log` (không chốt số trong docs).
+
+### 01/10/2026 — Vòng Backend P0: API Keys, Webhooks Delivery, Loyalty/Tiers & Idempotent Area/Table Seed (Backend `35b9823`)
+- **Việc 1 — API Keys & Webhooks (C-022)**:
+  - `src/controllers/apikey.controller.ts` & `src/routes/apikey.routes.ts`: `GET /api/api-keys` (scope tenantId, chỉ trả prefix/permissions, không lộ key thô và keyHash), `POST /api/api-keys` (Zod validate, sinh key `mgk_<32 hex>`, lưu SHA-256 hash + prefix 8 ký tự, trả key thô đúng 1 lần trong response tạo), `DELETE /api/api-keys/:id` (thu hồi `isActive=false`).
+  - `src/controllers/webhook.controller.ts` & `src/routes/webhook.routes.ts`: `GET /api/webhooks`, `POST /api/webhooks` (Zod validate URL http/https, events subset của 11 events TECHS §7), `DELETE /api/webhooks/:id`, `GET /api/webhooks/:id/deliveries` (lịch sử gửi), `POST /api/webhooks/:id/test` (bắn test event, timeout 5s, ký HMAC-SHA256, lưu delivery log vào DB).
+  - Schema migration: Thêm model `WebhookDelivery` liên kết `WebhookConfig` (`prisma/migrations/20261001070000_area_unique_and_webhook_delivery`).
+- **Việc 2 — Loyalty & Membership Tiers (C-017)**:
+  - `src/controllers/loyalty.controller.ts` & `src/routes/loyalty.routes.ts`: `GET /api/tiers` (scope tenantId, đủ 4 hạng), `PUT /api/tiers/:id` (ADMIN, Zod validate minPoints, discountRate, color hex), `GET /api/customers?phone=` (CASHIER/MANAGER/ADMIN, scope tenantId, trả name/tier/points/discountRate an toàn, không rò email), `POST /api/customers/points` (CASHIER+, Zod validate phone, pointsDelta, tự động nâng hạng theo ngưỡng điểm, log Winston).
+  - Thay vì sửa `customer.controller.ts` (thuộc Team B), Thành viên C tạo module mới và mount qua `index.ts`, giữ nguyên file của Team B để đối chiếu migrate sau.
+- **Việc 3 — Seed Area/Table Idempotent (C-001 dứt điểm)**:
+  - Schema migration: Bổ sung `@@unique([tenantId, branchId, name])` cho model `Area`.
+  - `prisma/seed.ts`: Chuyển Area và Table từ `create` sang `upsert` theo unique constraint tương ứng. Rerun seed 2 lần liên tiếp: exit code 0, 0 lỗi, 0 dòng trùng (`Area count: 2`, `Table count: 7`).
+- **Files chạm**:
+  - `backend/prisma/schema.prisma`
+  - `backend/prisma/migrations/20261001070000_area_unique_and_webhook_delivery/migration.sql`
+  - `backend/prisma/seed.ts`
+  - `backend/src/controllers/apikey.controller.ts` (mới)
+  - `backend/src/controllers/webhook.controller.ts` (mới)
+  - `backend/src/controllers/loyalty.controller.ts` (mới)
+  - `backend/src/routes/apikey.routes.ts` (mới)
+  - `backend/src/routes/webhook.routes.ts` (mới)
+  - `backend/src/routes/loyalty.routes.ts` (mới)
+  - `backend/src/routes/index.ts`
+- **Kết quả Verify Runtime**:
+  - 17/17 kịch bản kiểm thử tự động PASS 100%: API key trả 1 lần -> list không lộ key thô -> thu hồi thành công; Webhook đăng ký -> bắn test ping -> delivery log ghi nhận status 200; Tiers đủ 4 hạng -> PUT cập nhật chiết khấu -> tra cứu SĐT hội viên an toàn -> cộng điểm vượt ngưỡng tự động thăng hạng Kim Cương; Token giả bị chặn 401; Cashier bị chặn 403 khi vào API Key / sửa Tier; Zod chặn body rỗng / event lạ 400.
+- **Phần nợ chuyển vòng sau**:
+  - Hàng đợi Webhook background qua Redis/BullMQ (hiện đang gửi trực tiếp timeout 5s, thất bại không chặn response chính).
+  - Bảng `LoyaltyPointLog` trong Prisma schema để lưu vết lịch sử tích/tiêu điểm chi tiết (hiện ghi log qua Winston).
 
