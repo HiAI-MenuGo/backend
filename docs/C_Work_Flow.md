@@ -570,7 +570,7 @@ git push origin feat/be-admin-report-c
 ### 01/10/2026 — E2E Full-Loop Test trên DB PostgreSQL thật (Pass 15/15)
 - **Môi trường & Database**: Backend Express (`localhost:5000`) + Frontend Next.js (`localhost:3000`) + PostgreSQL 17 native (`hiai_menugo`). Toàn bộ luồng test được xác thực tự động và thủ công trên CSDL thật sau seed.
 - **Commit fixes phục vụ tương thích E2E (Frontend)**: `0c19a65` (`fix(e2e): handle session order route fallback and kds status payload compatibility`).
-- **Backend**: Giữ nguyên sạch sẽ theo RULES §3 (không can thiệp code Team A/B), HEAD tại `69f94c4`.
+- **Backend**: Giữ nguyên sạch sẽ theo RULES §3 (không can thiệp code Team A/B); code backend không đổi từ vòng P2 (xem `git log` lấy HEAD hiện tại).
 
 #### 📊 Ma trận kết quả kiểm thử 15 bước (15/15 PASS)
 | STT | Kịch bản | Bước kiểm thử | Kết quả | Bằng chứng (Evidence) |
@@ -594,6 +594,12 @@ git push origin feat/be-admin-report-c
 #### 🐞 Bảng tổng hợp Bug Report (Phân loại theo Team)
 1. `[SEV-1] [Team A] Thiếu route Shared API POST /api/sessions/:tableId/order — Kịch bản 1 (Bước 4) — Expected: TECHS.md §9 quy định endpoint tiếp nhận order từ QR Menu / Actual: Backend báo 404 do session.routes.ts chỉ có /pending-payment và /active-summary — Evidence: POST /api/sessions/tbl-01/order -> 404 NOT_FOUND — Đề xuất fix: Team A mount route POST /:tableId/order gọi OrderController.createOrder trong session.routes.ts.`
 2. `[SEV-1] [Team A] Enum LiveOrderStatus trong Backend chặn trạng thái PREPARING — Kịch bản 1 (Bước 5) — Expected: BUSINESS.md §3 quy định chu trình KDS là PENDING -> PREPARING -> READY/DONE / Actual: OrderController.updateStatus chỉ cho phép ['PENDING', 'CONFIRMED', 'DONE'], gửi PREPARING bị 400 — Evidence: PATCH /api/orders/ord-xxx/status { status: 'PREPARING' } -> 400 INVALID_STATUS — Đề xuất fix: Team A thêm 'PREPARING' vào LiveOrderStatus enum và validator của OrderController.`
-3. `[SEV-1] [Team C] kds/page.tsx thiếu orderId trong body updateItemStatus — Kịch bản 1 (Bước 5) — Expected: Gọi PATCH /orders/items/:id/status kèm { orderId, status } / Actual: Thiếu orderId dẫn tới 400 — Evidence: PATCH /orders/items/item-xxx/status body chỉ có { status } -> 400 — Đề xuất fix: Đã fix tại frontend commit 0c19a65 (bổ sung orderId vào payload).`
-4. `[SEV-2] [Team B] Chưa liên kết trigger trừ kho BOM tự động khi hoàn tất thanh toán — Kịch bản 2 & 3 — Expected: BUSINESS.md §3 yêu cầu khi đơn hàng thanh toán thành công phải tự động trừ kho nguyên liệu theo BOM / Actual: Kho nguyên liệu chỉ trừ khi gọi PATCH /api/ingredients/:id/adjust thủ công — Evidence: Tồn kho nguyên liệu không đổi sau khi thanh toán đơn hàng — Đề xuất fix: Team B bổ sung hook trừ kho nguyên liệu trong CashierService.payOrder.`
+ 3. `[SEV-1] [Team C] kds/page.tsx thiếu orderId trong body updateItemStatus — Kịch bản 1 (Bước 5) — Expected: Gọi PATCH /orders/items/:id/status kèm { orderId, status } / Actual: Thiếu orderId dẫn tới `400 INVALID_PARAMS` — Evidence: PATCH /orders/items/item-xxx/status body chỉ có { status } -> 400 — Đề xuất fix: Đã fix tại frontend commit 0c19a65 (bổ sung orderId vào payload).
+ 4. `[SEV-2] [Team B] Chưa liên kết trigger trừ kho BOM tự động khi hoàn tất thanh toán — Kịch bản 2 & 3 — Expected: BUSINESS.md §3 yêu cầu khi đơn hàng thanh toán thành công phải tự động trừ kho nguyên liệu theo BOM / Actual: Kho nguyên liệu chỉ trừ khi gọi PATCH /api/ingredients/:id/adjust thủ công — Evidence: Tồn kho nguyên liệu không đổi sau khi thanh toán đơn hàng — Đề xuất fix: Team B bổ sung hook trừ kho nguyên liệu trong `CashierController.payCash` / `handleWebhook` (hiện logic thanh toán nằm ở 2 hàm này, chưa gọi `InventoryService`).
+
+#### ✅ Bổ sung sau review E2E (01/10/2026, verify runtime tươi trên server local)
+- `POST /api/auth/login` (admin@menu-go.vn) → 200, role ADMIN.
+- `POST /api/vouchers/validate` sai mã → `INVALID_VOUCHER`; `GIAM30K`/`subTotal=200000` → success, `discountAmount=30000`.
+- Token giả mạo → 401. (Lưu ý: validate public cần `tenantId` trong body khi chưa đăng nhập, thiếu thì `MISSING_FIELDS`.)
+- Đính chính: mã lỗi thiếu `orderId` là `INVALID_PARAMS`; HEAD backend tra cứu bằng `git log` (không chốt số trong docs).`
 
