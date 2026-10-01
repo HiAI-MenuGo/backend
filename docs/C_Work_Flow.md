@@ -525,6 +525,26 @@ git push origin feat/be-admin-report-c
 ## 📝 Nhật Ký Tiến Độ Thành Viên C (RULES §6)
 
 ### 01/10/2026 — Vòng fix review (Backend `bf09a05`, Frontend `c4566c1`)
-- **Backend `feat/be-admin-report-c` → `bf09a05`**: khớp spec routes (`POST /vouchers/validate` alias + `DELETE /:id` + `POST /:id/redeem` tăng `usedCount`; `GET /z-report/shift-summary`, `POST /close-shift`, `GET /export?format=excel|pdf`; `PATCH /branding/:tenantId`; `GET /admin/users/roles`); khóa `tenantId` (bỏ fallback query, bỏ auto-create branding public, MANAGER scope `branchId`); gắn Zod `validate()` + `details`; logger file `logs/`; `auth.service` login ưu tiên Prisma; hết leak `error.message`. Chạm: `voucher/zreport/branding/platform/user.controller.ts`, `voucher/zreport/branding/user.routes.ts`, `auth.service.ts`, `logger.ts`, `response.ts`, `validate.ts`, `package.json` (scripts `db:migrate/db:deploy`). Verify: `tsc --noEmit` + `npm run build` xanh.
-- **Frontend `feat/web-frontend-c` → `c4566c1`**: `lib/format-note.tsx` (note đa dòng `•` cho KDS/POS/print); modal món lọc Đường/Đá không phân biệt hoa-thường + `textarea`; mock menu gắn `category.isDrink`; POS áp voucher `/vouchers/validate` + tra SĐT + nút Hủy món `justify-end rose` + QR `level="H"`; KDS mute `localStorage` + Notification; order-status `!isInitializing` + `order:item:status`; `TableQRCode` logo + tải PNG; mới `admin/integrations/page.tsx`, `table/[tableId]/loading.tsx`, `components/print/ReceiptPrintTemplate.tsx`, `@media print` 80mm, sidebar thêm `API & Webhook`. Verify: `tsc --noEmit` + `next build` xanh (23 routes).
-- **Còn nợ (vòng tiếp theo)**: `prisma/migrations` cần DB thật; export PDF/Excel native (`pdfkit/exceljs`); invite mail Nodemailer; Admin pages lên dữ liệu thật thay mock fallback; `public/sounds/new_order.mp3`; phủ i18n toàn app.
+- **Backend `feat/be-admin-report-c` → `bf09a05`**: khớp spec routes (`POST /vouchers/validate` alias + `DELETE /:id` + `POST /:id/redeem` tăng `usedCount`; `GET /z-report/shift-summary`, `POST /close-shift`, `GET /export?format=excel|pdf`; `PATCH /branding/:tenantId`; `GET /admin/users/roles`); khóa `tenantId` (bỏ fallback query, bỏ auto-create branding public, MANAGER scope `branchId`); gắn Zod `validate()` + `details`; logger file `logs/`; `auth.service` login ưu tiên Prisma; hết leak `error.message`.
+- **Frontend `feat/web-frontend-c` → `c4566c1`**: `lib/format-note.tsx` (note đa dòng `•` cho KDS/POS/print); modal món lọc Đường/Đá không phân biệt hoa-thường + `textarea`; mock menu gắn `category.isDrink`; POS áp voucher `/vouchers/validate` + tra SĐT + nút Hủy món `justify-end rose` + QR `level="H"`; KDS mute `localStorage` + Notification; order-status `!isInitializing` + `order:item:status`; `TableQRCode` logo + tải PNG; mới `admin/integrations/page.tsx`, `table/[tableId]/loading.tsx`, `components/print/ReceiptPrintTemplate.tsx`, `@media print` 80mm, sidebar thêm `API & Webhook`.
+
+### 01/10/2026 — Hoàn tất P1: Database thật (C-001) + Admin lên dữ liệu thật (Giai đoạn 5)
+- **Backend `feat/be-admin-report-c` → `3198223` (fix(db): run initial multi-tenant migration and seed database)**:
+  - Cấu hình DATABASE_URL local: `postgresql://postgres:postgres@localhost:5432/hiai_menugo?schema=public` (Postgres 17 local).
+  - Chạy thành công `npx prisma migrate dev --name init_multi_tenant` → sinh thư mục `prisma/migrations/20261001044147_init_multi_tenant/migration.sql`.
+  - Sửa `prisma/seed.ts` (thêm `branchId` bắt buộc vào nested create của `Table`, đảm bảo idempotent 100% khi chạy lại). Chạy `npx prisma db seed` nạp đủ 492 records.
+  - Verify API thực tế: `GET /api/health` (200), `POST /api/auth/login` với `admin@menu-go.vn` / `123456` xác thực từ Prisma DB thật (200), `GET /api/admin/users` (5 users cùng tenant, 0 cross-tenant), `GET /api/vouchers` (2 vouchers thật), `GET /api/z-report/shift-summary` (200), token giả mạo bị chặn 401. `tsc --noEmit` & `npm run build` xanh 100%.
+- **Frontend `feat/web-frontend-c` → `c53c21b` (feat(admin): connect real backend apis and state handlers across admin pages)**:
+  - `admin/menu`: Thay mock bằng `apiFetch('/menu/items')`, `toggleSoldOut` gọi `PATCH /menu/items/:id/sold-out`. Thêm skeleton loading, empty state, error state có nút "Thử lại", banner thông báo rõ ràng tính năng CRUD món chi tiết đang do Team A/B hoàn thiện.
+  - `admin/inventory`: Đọc danh sách tồn kho từ `apiFetch('/ingredients')`, điều chỉnh tồn kho qua `PATCH /ingredients/:id/adjust`. Loading skeleton, empty state, error state, banner Team A/B BOM recipe.
+  - `admin/vouchers`: Kết nối 100% CSDL thật qua `GET /vouchers`, tạo mới qua `POST /vouchers`, bật/tắt qua `PATCH /vouchers/:id`, xóa qua `DELETE /vouchers/:id`. Loading skeleton, empty/error state.
+  - `admin/z-report`: Đọc số liệu ca từ `GET /z-report/shift-summary`, lịch sử từ `GET /z-report/history`, chốt ca qua `POST /z-report/close-shift`, xuất Excel qua `/export?format=excel`, xuất PDF in 80mm qua `/export?format=pdf`. Giữ nguyên đối soát tiền mặt thực tế vs hệ thống.
+  - `admin/roles`: Kết nối danh sách nhân sự từ `GET /admin/users`, tạo tài khoản qua `POST /admin/users`, bật/tắt qua `PATCH /admin/users/:id`. Loading skeleton, empty/error state.
+  - `admin/settings/branding` & `admin/settings/bank`: Đọc dữ liệu từ `GET /branding`, cập nhật qua `PUT /branding`, preview VietQR live theo số tài khoản thật.
+  - `admin/tables`: Đọc danh sách bàn từ `GET /tables`, hiển thị mã QR Level H standee với prop `tableCode`.
+  - Verify: `npx tsc --noEmit` và `npm run build` (Turbopack 23 routes) xanh 100%.
+- **Phần còn nợ chuyển sang P2**:
+  - Export PDF/Excel native dùng `pdfkit` / `exceljs` trực tiếp (hiện fallback CSV và HTML in 80mm).
+  - Gửi email mời nhân sự tự động bằng Nodemailer (hiện tạo trực tiếp qua API).
+  - File âm thanh `public/sounds/new_order.mp3` thông báo chuông bếp KDS.
+  - Phủ đa ngôn ngữ i18n toàn diện cho tất cả các trang Admin còn lại.
