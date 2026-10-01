@@ -560,3 +560,9 @@ git push origin feat/be-admin-report-c
   - `vouchers/page.tsx`, `roles/page.tsx`: toggle thất bại rollback + hiện banner lỗi đỏ.
   - Verify: `tsc --noEmit` + `next build` 23 routes xanh.
 - **Còn lại (chấp nhận, theo dõi)**: QR bàn chưa mã hóa JWT (spec C-023, cần backend phối hợp); `order.note` KDS hiển thị 1 dòng (không thuộc diện `item.note` bắt buộc); chart dashboard màu cứng (ngoài P1).
+
+### 01/10/2026 — Vòng P2 (export native, mail invite, chuông KDS, QR JWT, i18n)
+- **Export Z-Report native**: `GET /z-report/export?format=excel` trả `.xlsx` thật (exceljs), `format=pdf` trả `.pdf` khổ 80mm thật (pdfkit), giữ `csv` fallback. Verify runtime: xlsx 6660 bytes, pdf 1465 bytes, mở được.
+- **Mail mời nhân sự**: mới `src/utils/mailer.ts` (Nodemailer, best-effort — thiếu `SMTP_USER/PASS` thì log warn, không chặn tạo user); `POST /api/admin/users` tự gửi mail mời.
+- **QR bàn JWT (C-023)**: mới `table-qr.controller.ts` — `GET /api/tables/:id/qr-token` (ADMIN/MANAGER, ký JWT `{tableId,tenantId,branchId}`) + `GET /api/tables/resolve?token=` public (sai token → 400). Có fallback ký tenant-scoped cho id từ module Tables mock của team B. Verify runtime: ký → resolve roundtrip đúng `tableId` + `tenantId`.
+- Verify: `tsc --noEmit` + `npm run build` xanh.

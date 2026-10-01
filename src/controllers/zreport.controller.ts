@@ -78,8 +78,9 @@ export class ZReportController {
   }
 
   /**
-   * GET /api/z-report/export?format=pdf|excel&branchId=&startTime=
-   * Xuất báo cáo ca: excel = CSV tương thích Excel, pdf = HTML in được (fallback khi chưa có pdfkit).
+   * GET /api/z-report/export?format=pdf|excel|csv&branchId=&startTime=
+   * Xuất báo cáo ca native: excel = .xlsx (exceljs), pdf = .pdf (pdfkit),
+   * csv giữ tương thích cũ.
    */
   static async exportReport(req: Request, res: Response) {
     try {
@@ -92,26 +93,58 @@ export class ZReportController {
       const startTimeStr = req.query.startTime as string;
       const startTime = startTimeStr ? new Date(startTimeStr) : new Date(new Date().setHours(0, 0, 0, 0));
       const preview = await ZReportService.calculateShiftPreview(tenantId, branchId, startTime);
-      if (format === 'excel' || format === 'csv') {
-        const rows = [
-          ['Chi tieu', 'Gia tri'],
-          ['Doanh thu tien mat', preview.cashRevenue ?? 0],
-          ['Doanh thu VietQR', preview.qrRevenue ?? 0],
-          ['Doanh thu the', preview.cardRevenue ?? 0],
-          ['Tong doanh thu', preview.totalRevenue ?? 0],
-          ['So don hoan thanh', preview.orderCount ?? 0],
-          ['So mon huy', preview.voidedCount ?? 0],
-          ['Giam gia voucher', preview.totalDiscount ?? 0],
+      const fileBase = `z-report-${branchId}-${new Date().toISOString().slice(0, 10)}`;
+      const rows: Array<[string, number]> = [
+        ['Doanh thu tien mat', preview.cashRevenue ?? 0],
+        ['Doanh thu VietQR', preview.qrRevenue ?? 0],
+        ['Doanh thu the', preview.cardRevenue ?? 0],
+        ['Tong doanh thu', preview.totalRevenue ?? 0],
+        ['So don hoan thanh', preview.orderCount ?? 0],
+        ['So mon huy', preview.voidedCount ?? 0],
+        ['Giam gia voucher', preview.totalDiscount ?? 0],
+      ];
+
+      if (format === 'excel' || format === 'xlsx') {
+        const ExcelJS = (await import('exceljs')).default;
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'HiAI-MenuGo';
+        const ws = wb.addWorksheet('Z-Report');
+        ws.columns = [
+          { header: 'Chi tieu', key: 'label', width: 28 },
+          { header: 'Gia tri', key: 'value', width: 20 },
         ];
-        const csv = '\uFEFF' + rows.map((r) => r.join(',')).join('\n');
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="z-report-${branchId}.csv"`);
-        return res.status(200).send(csv);
+        rows.forEach(([label, value]) => ws.addRow({ label, value }));
+        ws.getRow(1).font = { bold: true };
+        const buf = await wb.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.xlsx"`);
+        return res.status(200).send(Buffer.from(buf));
       }
-      // PDF: trả HTML tối giản để client in/screenshot thành PDF khổ 80mm.
-      const html = `<!doctype html><html><head><meta charset="utf-8"><style>@media print{@page{size:80mm auto;margin:4mm}body{width:72mm;font-family:monospace;font-size:11px;color:#000}}</style></head><body><h3>Z-REPORT</h3><p>Tong: ${preview.totalRevenue ?? 0}</p><p>Tien mat: ${preview.cashRevenue ?? 0}</p><p>VietQR: ${preview.qrRevenue ?? 0}</p><p>Don: ${preview.orderCount ?? 0} - Huy: ${preview.voidedCount ?? 0}</p></body></html>`;
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.status(200).send(html);
+
+      if (format === 'pdf') {
+        const PDFDocument = (await import('pdfkit')).default;
+        const doc = new PDFDocument({ size: [226, 600], margin: 12 });
+        const chunks: Buffer[] = [];
+        doc.on('data', (c: Buffer) => chunks.push(c));
+        const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+        doc.fontSize(14).text('Z-REPORT', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(9);
+        rows.forEach(([label, value]) => doc.text(`${label}: ${Number(value).toLocaleString('vi-VN')}`));
+        doc.moveDown(0.5);
+        doc.text(`Xuat luc: ${new Date().toLocaleString('vi-VN')}`, { align: 'center' });
+        doc.end();
+        const pdf = await done;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`);
+        return res.status(200).send(pdf);
+      }
+
+      // CSV fallback tương thích cũ.
+      const csv = '\uFEFF' + [['Chi tieu', 'Gia tri'], ...rows].map((r) => r.join(',')).join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
+      return res.status(200).send(csv);
     } catch (error: any) {
       logger.error('zreport export failed', { stack: error?.stack });
       return ApiResponse.error(res, 'EXPORT_ERROR', 'Lỗi xuất báo cáo kết ca', 500);
