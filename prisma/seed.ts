@@ -43,27 +43,39 @@ async function main() {
 
   console.log(`✅ Tenant seeded: ${tenant.name} (${tenant.id})`);
 
-  // Clean up any existing child data for idempotent re-runs
-  await prisma.voucherUsage.deleteMany({ where: { voucher: { tenantId: tenant.id } } });
-  await prisma.voucher.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.paymentTransaction.deleteMany({ where: { session: { tenantId: tenant.id } } });
-  await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { tenantId: tenant.id } } } });
-  await prisma.orderItem.deleteMany({ where: { order: { tenantId: tenant.id } } });
-  await prisma.order.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.orderSession.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.zReport.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.recipe.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
-  await prisma.inventoryLog.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.ingredient.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.itemModifierGroup.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
-  await prisma.menuItem.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.modifierOption.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.modifierGroup.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.menuCategory.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.table.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.area.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.customer.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.membershipTier.deleteMany({ where: { tenantId: tenant.id } });
+  // AN TOÀN PROD: không bao giờ wipe dữ liệu vận hành.
+  // Chỉ xóa-nạp lại catalog khi tenant chưa có order session nào (DB demo mới),
+  // hoặc khi chạy seed với ALLOW_SEED_WIPE=true một cách tường minh.
+  const operationalSessions = await prisma.orderSession.count({ where: { tenantId: tenant.id } });
+  const allowWipe = process.env.ALLOW_SEED_WIPE === 'true';
+  const skipCatalog = operationalSessions > 0 && !allowWipe;
+  if (skipCatalog) {
+    console.log(
+      `⚠️  Tenant ${tenant.code} đã có ${operationalSessions} phiên vận hành — BỎ QUA wipe & nạp catalog để bảo toàn dữ liệu thật.`
+    );
+  } else {
+    // Clean up any existing child data for idempotent re-runs (chỉ DB demo trống)
+    await prisma.voucherUsage.deleteMany({ where: { voucher: { tenantId: tenant.id } } });
+    await prisma.voucher.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.paymentTransaction.deleteMany({ where: { session: { tenantId: tenant.id } } });
+    await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { tenantId: tenant.id } } } });
+    await prisma.orderItem.deleteMany({ where: { order: { tenantId: tenant.id } } });
+    await prisma.order.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.orderSession.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.zReport.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.recipe.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
+    await prisma.inventoryLog.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.ingredient.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.itemModifierGroup.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
+    await prisma.menuItem.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.modifierOption.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.modifierGroup.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.menuCategory.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.table.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.area.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.customer.deleteMany({ where: { tenantId: tenant.id } });
+    await prisma.membershipTier.deleteMany({ where: { tenantId: tenant.id } });
+  }
 
   // 2. Create Default Branch
   const branch = await prisma.branch.upsert({
@@ -144,6 +156,11 @@ async function main() {
     });
   }
   console.log(`✅ Seeded ${usersData.length} users with password '123456'`);
+
+  if (skipCatalog) {
+    console.log('✅ Seed an toàn hoàn tất (giữ nguyên catalog & dữ liệu vận hành).');
+    return;
+  }
 
   // 4. Create Areas and Tables
   const groundFloor = await prisma.area.create({
