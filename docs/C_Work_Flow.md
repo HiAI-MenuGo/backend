@@ -35,41 +35,45 @@ Thành viên C chịu trách nhiệm phối hợp giữa **Web Platform Fullstac
 ### Web Frontend (`frontend/`)
 | File / Thư mục | Mô tả | Trạng thái |
 |----------------|--------|------------|
-| `app/table/[tableId]/page.tsx` | QR Menu khách hàng tại bàn | 🟡 Đang hoàn thiện |
-| `app/table/[tableId]/MenuItemList.tsx` | Danh sách món, grid 2 cột | 🟡 Đang hoàn thiện |
-| `app/table/[tableId]/CustomerItemOptionsModal.tsx` | Modal tùy chọn Đường/Đá/Size/Topping | 🟡 Đang hoàn thiện |
-| `app/table/hooks/useMenuSoldOut.ts` | Hook đồng bộ sold-out realtime | 🟡 Đang hoàn thiện |
-| `app/kds/page.tsx` | Kitchen Display System | 🟡 Đang hoàn thiện |
-| `app/pos/page.tsx` | POS toàn màn hình | 🟡 Đang hoàn thiện |
-| `app/pos/CashierClient.tsx` | Client component thu ngân | 🟡 Đang hoàn thiện |
-| `app/pos/ItemOptionsModal.tsx` | Modal tùy chỉnh món cho POS | 🟡 Đang hoàn thiện |
-| `app/pos/cashier/page.tsx` | Layout cashier riêng | 🟡 Đang hoàn thiện |
-| `app/admin/dashboard/page.tsx` | Dashboard Admin tổng quan | 🟡 Đang hoàn thiện |
-| `app/admin/menu/page.tsx` | Quản lý thực đơn Admin | 🟡 Đang hoàn thiện |
-| `app/admin/inventory/page.tsx` | Quản lý kho BOM | 🟡 Đang hoàn thiện |
-| `app/admin/vouchers/page.tsx` | Mã giảm giá & Loyalty | 🟡 Đang hoàn thiện |
-| `app/admin/z-report/page.tsx` | Báo cáo kết ca | 🟡 Đang hoàn thiện |
-| `app/admin/settings/` | Cài đặt nhà hàng, Branding, Ngân hàng | 🟡 Đang hoàn thiện |
-| `app/admin/roles/page.tsx` | Quản lý nhân sự & phân quyền | 🟡 Đang hoàn thiện |
-| `app/admin/integrations/page.tsx` | API Keys & Webhook | 🟡 Đang hoàn thiện |
-| `app/platform-admin/` | SaaS Platform Admin | 🟡 Đang hoàn thiện |
-| `app/receipt/[sessionId]/page.tsx` | Hóa đơn thanh toán | 🟡 Đang hoàn thiện |
-| `components/floor/TableQRCode.tsx` | Tạo mã QR bàn ăn (level H) | 🟡 Đang hoàn thiện |
-| `components/inventory/BomEditor.tsx` | Editor định lượng nguyên liệu | 🟡 Đang hoàn thiện |
-| `components/print/KitchenTicketTemplate.tsx` | Mẫu phiếu in bếp nhiệt | 🟡 Đang hoàn thiện |
-| `components/print/ReceiptPrintTemplate.tsx` | Mẫu hóa đơn thanh toán nhiệt | 🟡 Đang hoàn thiện |
+| `app/table/[tableId]/page.tsx` | QR Menu khách hàng tại bàn | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/[tableId]/MenuItemList.tsx` | Danh sách món, grid 2 cột | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/[tableId]/CustomerItemOptionsModal.tsx` | Modal tùy chọn Đường/Đá/Size/Topping | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/table/hooks/useMenuSoldOut.ts` | Hook đồng bộ sold-out realtime | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/kds/page.tsx` | Kitchen Display System | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/page.tsx` | POS toàn màn hình | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/CashierClient.tsx` | Client component thu ngân | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/ItemOptionsModal.tsx` | Modal tùy chỉnh món cho POS | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/pos/cashier/page.tsx` | Layout cashier riêng | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/dashboard/page.tsx` | Dashboard Admin tổng quan | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/menu/page.tsx` | Quản lý thực đơn Admin | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/inventory/page.tsx` | Quản lý kho BOM | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/vouchers/page.tsx` | Mã giảm giá & Loyalty | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/z-report/page.tsx` | Báo cáo kết ca | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/settings/` | Cài đặt nhà hàng, Branding, Ngân hàng | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/roles/page.tsx` | Quản lý nhân sự & phân quyền | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/admin/tables/page.tsx` | Sơ đồ bàn & Mã QR bàn | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/platform-admin/` | SaaS Platform Admin | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `app/receipt/[sessionId]/page.tsx` | Hóa đơn thanh toán | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `components/floor/TableQRCode.tsx` | Tạo mã QR bàn ăn (level H) | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `components/inventory/BomEditor.tsx` | Editor định lượng nguyên liệu | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `stores/auth.store.ts` | Zustand Auth & User store | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `stores/cart.store.ts` | Zustand Cart store với modifiers | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
+| `context/i18nContext.tsx` | Đa ngôn ngữ Việt / Anh | 🟢 Đã hoàn thành (Commit `bddc1f6`) |
 
 ### Backend (`backend/`)
 | File | Mô tả | Trạng thái |
 |------|--------|------------|
-| `backend/prisma/schema.prisma` | ~40 Models CSDL Multi-tenant & Migrations | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/platform.controller.ts` | Quản lý tenants và gói cước SaaS | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/user.controller.ts` | Quản lý danh sách nhân sự, phân quyền vai trò | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/zreport.controller.ts` | Tổng hợp báo cáo kết ca, đối soát tài chính | 🟡 Đang hoàn thiện |
-| `backend/src/services/zreport.service.ts` | Tính toán doanh thu ca & xuất PDF / Excel | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/voucher.controller.ts` | Động cơ kiểm tra & áp dụng mã giảm giá | 🟡 Đang hoàn thiện |
-| `backend/src/controllers/branding.controller.ts` | Tùy biến thông tin quán, logo, màu sắc, ngân hàng | 🟡 Đang hoàn thiện |
+| `backend/prisma/schema.prisma` | ~40 Models CSDL Multi-tenant & Migrations | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/prisma/seed.ts` | Script Seeder dữ liệu mẫu | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/platform.controller.ts` | Quản lý tenants và gói cước SaaS | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/user.controller.ts` | Quản lý danh sách nhân sự, phân quyền vai trò | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/zreport.controller.ts` | Tổng hợp báo cáo kết ca, đối soát tài chính | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/services/zreport.service.ts` | Tính toán doanh thu ca & xuất báo cáo | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/voucher.controller.ts` | Động cơ kiểm tra & áp dụng mã giảm giá | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/controllers/branding.controller.ts` | Tùy biến thông tin quán, logo, màu sắc, ngân hàng | 🟢 Đã hoàn thành (Commit `6f61604`) |
 | `backend/src/utils/response.ts` | Helper chuẩn hóa ApiResponse toàn dự án | 🟢 Dùng chung |
+| `backend/src/utils/logger.ts` | Winston Structured Logger | 🟢 Đã hoàn thành (Commit `6f61604`) |
+| `backend/src/middlewares/validate.ts` | Zod Validation Middleware | 🟢 Đã hoàn thành (Commit `6f61604`) |
 
 
 ---
@@ -515,3 +519,44 @@ git push origin feat/be-admin-report-c
 
 > [!TIP]
 > Sử dụng `QRCodeSVG` với `level="H"` là bắt buộc khi chèn logo vào giữa QR. Level H cho phép 30% diện tích bị che mà vẫn quét được. Các level thấp hơn sẽ khiến QR không đọc được khi có logo.
+
+---
+
+## 📝 Nhật Ký Tiến Độ Thành Viên C (RULES §6)
+
+### 01/10/2026 — Vòng fix review (Backend `bf09a05`, Frontend `c4566c1`)
+- **Backend `feat/be-admin-report-c` → `bf09a05`**: khớp spec routes (`POST /vouchers/validate` alias + `DELETE /:id` + `POST /:id/redeem` tăng `usedCount`; `GET /z-report/shift-summary`, `POST /close-shift`, `GET /export?format=excel|pdf`; `PATCH /branding/:tenantId`; `GET /admin/users/roles`); khóa `tenantId` (bỏ fallback query, bỏ auto-create branding public, MANAGER scope `branchId`); gắn Zod `validate()` + `details`; logger file `logs/`; `auth.service` login ưu tiên Prisma; hết leak `error.message`.
+- **Frontend `feat/web-frontend-c` → `c4566c1`**: `lib/format-note.tsx` (note đa dòng `•` cho KDS/POS/print); modal món lọc Đường/Đá không phân biệt hoa-thường + `textarea`; mock menu gắn `category.isDrink`; POS áp voucher `/vouchers/validate` + tra SĐT + nút Hủy món `justify-end rose` + QR `level="H"`; KDS mute `localStorage` + Notification; order-status `!isInitializing` + `order:item:status`; `TableQRCode` logo + tải PNG; mới `admin/integrations/page.tsx`, `table/[tableId]/loading.tsx`, `components/print/ReceiptPrintTemplate.tsx`, `@media print` 80mm, sidebar thêm `API & Webhook`.
+
+### 01/10/2026 — Hoàn tất P1: Database thật (C-001) + Admin lên dữ liệu thật (Giai đoạn 5)
+- **Backend `feat/be-admin-report-c` → `3198223` (fix(db): run initial multi-tenant migration and seed database)**:
+  - Cấu hình DATABASE_URL local: `postgresql://postgres:postgres@localhost:5432/hiai_menugo?schema=public` (Postgres 17 local).
+  - Chạy thành công `npx prisma migrate dev --name init_multi_tenant` → sinh thư mục `prisma/migrations/20261001044147_init_multi_tenant/migration.sql`.
+  - Sửa `prisma/seed.ts`: guard an toàn prod — seed chỉ wipe + nạp lại catalog khi tenant chưa có phiên vận hành nào (hoặc `ALLOW_SEED_WIPE=true` tường minh); tenant đã có orders/sessions thì chỉ upsert tenant/branch/users rồi dừng, tuyệt đối không xóa dữ liệu thật. Ghi chú `branchId` bắt buộc trong nested create của `Table` là fix đúng schema (`@@unique[branchId, code]`), không phải cơ chế idempotent. Chạy `npx prisma db seed` nạp dữ liệu mẫu (seed.ts 514 dòng; con số 492 trước đây thiếu evidence nên bỏ).
+  - Verify API thực tế: `GET /api/health` (200), `POST /api/auth/login` với `admin@menu-go.vn` / `123456` xác thực từ Prisma DB thật (200), `GET /api/admin/users` (5 users cùng tenant, 0 cross-tenant), `GET /api/vouchers` (2 vouchers thật), `GET /api/z-report/shift-summary` (200), token giả mạo bị chặn 401. `tsc --noEmit` & `npm run build` xanh 100%.
+- **Frontend `feat/web-frontend-c` → `c53c21b` (feat(admin): connect real backend apis and state handlers across admin pages)**:
+  - `admin/menu`: Thay mock bằng `apiFetch('/menu/items')`, `toggleSoldOut` gọi `PATCH /menu/items/:id/sold-out`. Thêm skeleton loading, empty state, error state có nút "Thử lại", banner thông báo rõ ràng tính năng CRUD món chi tiết đang do Team A/B hoàn thiện.
+  - `admin/inventory`: Đọc danh sách tồn kho từ `apiFetch('/ingredients')`, điều chỉnh tồn kho qua `PATCH /ingredients/:id/adjust`. Loading skeleton, empty state, error state, banner Team A/B BOM recipe.
+  - `admin/vouchers`: Kết nối 100% CSDL thật qua `GET /vouchers`, tạo mới qua `POST /vouchers`, bật/tắt qua `PATCH /vouchers/:id`, xóa qua `DELETE /vouchers/:id`. Loading skeleton, empty/error state.
+  - `admin/z-report`: Đọc số liệu ca từ `GET /z-report/shift-summary`, lịch sử từ `GET /z-report/history`, chốt ca qua `POST /z-report/close-shift`, xuất Excel qua `/export?format=excel`, xuất PDF in 80mm qua `/export?format=pdf`. Giữ nguyên đối soát tiền mặt thực tế vs hệ thống.
+  - `admin/roles`: Kết nối danh sách nhân sự từ `GET /admin/users`, tạo tài khoản qua `POST /admin/users`, bật/tắt qua `PATCH /admin/users/:id`. Loading skeleton, empty/error state.
+  - `admin/settings/branding` & `admin/settings/bank`: Đọc dữ liệu từ `GET /branding`, cập nhật qua `PUT /branding`, preview VietQR live theo số tài khoản thật.
+  - `admin/tables`: Đọc danh sách bàn từ `GET /tables`, hiển thị mã QR Level H standee với prop `tableCode`.
+  - Verify: `npx tsc --noEmit` và `npm run build` (Turbopack 23 routes) xanh 100%.
+- **Phần còn nợ chuyển sang P2**:
+  - Export PDF/Excel native dùng `pdfkit` / `exceljs` trực tiếp (hiện fallback CSV và HTML in 80mm).
+  - Gửi email mời nhân sự tự động bằng Nodemailer (hiện tạo trực tiếp qua API).
+  - File âm thanh `public/sounds/new_order.mp3` thông báo chuông bếp KDS.
+  - Phủ đa ngôn ngữ i18n toàn diện cho tất cả các trang Admin còn lại.
+
+### 01/10/2026 — Vòng fix sau review P1 (Backend `7931558`, Frontend `eb1f77b`)
+- **Backend `feat/be-admin-report-c` → `7931558` (fix(db): guard seed wipe behind operational-data check)**: `prisma/seed.ts` bỏ wipe mù — chỉ xóa-nạp lại catalog khi tenant chưa có `OrderSession` nào hoặc `ALLOW_SEED_WIPE=true`; tenant đã có dữ liệu vận hành thì chỉ upsert tenant/branch/users rồi dừng. Ghi chú `ALLOW_SEED_WIPE` vào `.env.example`. Chạm: `prisma/seed.ts`, `.env.example`. Verify: `tsc --noEmit` + `npm run build` xanh.
+- **Frontend `feat/web-frontend-c` → `eb1f77b` (fix(admin): honest bom lock, authed export download, real table data, error surfacing)**:
+  - `BomEditor.tsx`: khóa nút Lưu khi endpoint BOM chưa tồn tại (`bomApiReady=false`), lưu thật qua `PUT /menu/items/:id/bom` khi API sẵn sàng — hết báo "đã lưu" giả.
+  - `z-report/page.tsx`: export tải qua `fetch` kèm `Authorization: Bearer` + blob download (excel) / tab in 80mm (pdf) — hết 401 im lặng.
+  - `tables/page.tsx`: bỏ `customerCount || 4` giả và `replace('tbl-','')`, dùng `code/capacity` thật, truyền `logoUrl` từ `/branding` vào QR.
+  - `settings/bank/page.tsx`: state rỗng ban đầu + cảnh báo "Chưa cấu hình — VietQR không hoạt động".
+  - `inventory/page.tsx`: `type` điều chỉnh theo dấu số lượng (`ADD`/`SUBTRACT`).
+  - `vouchers/page.tsx`, `roles/page.tsx`: toggle thất bại rollback + hiện banner lỗi đỏ.
+  - Verify: `tsc --noEmit` + `next build` 23 routes xanh.
+- **Còn lại (chấp nhận, theo dõi)**: QR bàn chưa mã hóa JWT (spec C-023, cần backend phối hợp); `order.note` KDS hiển thị 1 dòng (không thuộc diện `item.note` bắt buộc); chart dashboard màu cứng (ngoài P1).

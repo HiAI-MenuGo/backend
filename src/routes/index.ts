@@ -9,6 +9,12 @@ import ingredientRouter from './ingredient.routes';
 import customerRouter from './customer.routes';
 import menuRouter from './menu.routes';
 
+import platformRouter from './platform.routes';
+import userRouter from './user.routes';
+import zreportRouter from './zreport.routes';
+import voucherRouter from './voucher.routes';
+import brandingRouter from './branding.routes';
+
 const rootRouter = Router();
 
 rootRouter.use('/', healthRoutes);
@@ -20,5 +26,12 @@ rootRouter.use('/sessions', sessionRouter);
 rootRouter.use('/ingredients', ingredientRouter);
 rootRouter.use('/customers', customerRouter);
 rootRouter.use('/menu', menuRouter);
+
+// Member C Modules
+rootRouter.use('/platform-admin', platformRouter);
+rootRouter.use('/admin/users', userRouter);
+rootRouter.use('/z-report', zreportRouter);
+rootRouter.use('/vouchers', voucherRouter);
+rootRouter.use('/branding', brandingRouter);
 
 export default rootRouter;

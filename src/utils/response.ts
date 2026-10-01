@@ -9,11 +9,12 @@ export class ApiResponse {
     });
   }
 
-  static error(res: Response, errorCode: string, message: string, statusCode: number = 400) {
+  static error(res: Response, errorCode: string, message: string, statusCode: number = 400, details?: unknown) {
     return res.status(statusCode).json({
       success: false,
       errorCode,
       message,
+      ...(details !== undefined ? { details } : {}),
     });
   }
 }
