@@ -246,6 +246,7 @@ model Area {
   branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   tables Table[]
 
+  @@unique([tenantId, branchId, name])
   @@index([tenantId, branchId])
 }
 
@@ -677,7 +678,24 @@ model WebhookConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
 
   @@index([tenantId, isActive])
+}
+
+model WebhookDelivery {
+  id              String   @id @default(uuid())
+  webhookConfigId String
+  event           String
+  payload         String // JSON summary payload
+  statusCode      Int?
+  responseBody    String?
+  isSuccess       Boolean  @default(false)
+  error           String?
+  createdAt       DateTime @default(now())
+
+  webhookConfig WebhookConfig @relation(fields: [webhookConfigId], references: [id], onDelete: Cascade)
+
+  @@index([webhookConfigId, createdAt])
 }

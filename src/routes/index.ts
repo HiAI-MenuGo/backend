@@ -14,6 +14,9 @@ import userRouter from './user.routes';
 import zreportRouter from './zreport.routes';
 import voucherRouter from './voucher.routes';
 import brandingRouter from './branding.routes';
+import apiKeyRouter from './apikey.routes';
+import webhookRouter from './webhook.routes';
+import { tierRouter, loyaltyCustomerRouter } from './loyalty.routes';
 
 const rootRouter = Router();
 
@@ -24,7 +27,6 @@ rootRouter.use('/tables', tableRouter);
 rootRouter.use('/cashier', cashierRouter);
 rootRouter.use('/sessions', sessionRouter);
 rootRouter.use('/ingredients', ingredientRouter);
-rootRouter.use('/customers', customerRouter);
 rootRouter.use('/menu', menuRouter);
 
 // Member C Modules
@@ -33,5 +35,9 @@ rootRouter.use('/admin/users', userRouter);
 rootRouter.use('/z-report', zreportRouter);
 rootRouter.use('/vouchers', voucherRouter);
 rootRouter.use('/branding', brandingRouter);
+rootRouter.use('/api-keys', apiKeyRouter);
+rootRouter.use('/webhooks', webhookRouter);
+rootRouter.use('/tiers', tierRouter);
+rootRouter.use('/customers', loyaltyCustomerRouter);
 
 export default rootRouter;

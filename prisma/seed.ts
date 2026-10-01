@@ -162,40 +162,106 @@ async function main() {
     return;
   }
 
-  // 4. Create Areas and Tables
-  const groundFloor = await prisma.area.create({
-    data: {
+  // 4. Create Areas and Tables (Upsert theo unique [tenantId, branchId, name] và [branchId, code])
+  const groundFloor = await prisma.area.upsert({
+    where: {
+      tenantId_branchId_name: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        name: 'Tầng Trệt (Máy Lạnh)',
+      },
+    },
+    update: { displayOrder: 1 },
+    create: {
       tenantId: tenant.id,
       branchId: branch.id,
       name: 'Tầng Trệt (Máy Lạnh)',
       displayOrder: 1,
-      tables: {
-        create: [
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 01', name: 'Bàn 01 - Cửa Sổ', capacity: 2, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 02', name: 'Bàn 02 - Trung Tâm', capacity: 4, status: TableStatus.OCCUPIED },
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 03', name: 'Bàn 03 - Góc Ấm', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 04', name: 'Bàn 04 - Nhóm', capacity: 6, status: TableStatus.EMPTY },
-        ],
-      },
     },
   });
 
-  const gardenArea = await prisma.area.create({
-    data: {
+  const groundTables = [
+    { code: 'Bàn 01', name: 'Bàn 01 - Cửa Sổ', capacity: 2, status: TableStatus.EMPTY },
+    { code: 'Bàn 02', name: 'Bàn 02 - Trung Tâm', capacity: 4, status: TableStatus.OCCUPIED },
+    { code: 'Bàn 03', name: 'Bàn 03 - Góc Ấm', capacity: 4, status: TableStatus.EMPTY },
+    { code: 'Bàn 04', name: 'Bàn 04 - Nhóm', capacity: 6, status: TableStatus.EMPTY },
+  ];
+
+  for (const t of groundTables) {
+    await prisma.table.upsert({
+      where: {
+        branchId_code: {
+          branchId: branch.id,
+          code: t.code,
+        },
+      },
+      update: {
+        name: t.name,
+        capacity: t.capacity,
+        areaId: groundFloor.id,
+        status: t.status,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        areaId: groundFloor.id,
+        code: t.code,
+        name: t.name,
+        capacity: t.capacity,
+        status: t.status,
+      },
+    });
+  }
+
+  const gardenArea = await prisma.area.upsert({
+    where: {
+      tenantId_branchId_name: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        name: 'Khu Sân Vườn Ngoài Trời',
+      },
+    },
+    update: { displayOrder: 2 },
+    create: {
       tenantId: tenant.id,
       branchId: branch.id,
       name: 'Khu Sân Vườn Ngoài Trời',
       displayOrder: 2,
-      tables: {
-        create: [
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 05', name: 'Bàn 05 - Hiên Trà', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 06', name: 'Bàn 06 - Hồ Cá', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, branchId: branch.id, code: 'VIP-01', name: 'Phòng VIP Hoàng Gia', capacity: 10, status: TableStatus.RESERVED },
-        ],
-      },
     },
   });
-  console.log(`✅ Areas and Tables seeded for branch ${branch.name}`);
+
+  const gardenTables = [
+    { code: 'Bàn 05', name: 'Bàn 05 - Hiên Trà', capacity: 4, status: TableStatus.EMPTY },
+    { code: 'Bàn 06', name: 'Bàn 06 - Hồ Cá', capacity: 4, status: TableStatus.EMPTY },
+    { code: 'VIP-01', name: 'Phòng VIP Hoàng Gia', capacity: 10, status: TableStatus.RESERVED },
+  ];
+
+  for (const t of gardenTables) {
+    await prisma.table.upsert({
+      where: {
+        branchId_code: {
+          branchId: branch.id,
+          code: t.code,
+        },
+      },
+      update: {
+        name: t.name,
+        capacity: t.capacity,
+        areaId: gardenArea.id,
+        status: t.status,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        areaId: gardenArea.id,
+        code: t.code,
+        name: t.name,
+        capacity: t.capacity,
+        status: t.status,
+      },
+    });
+  }
+  console.log(`✅ Areas and Tables seeded (upserted) for branch ${branch.name}`);
 
   // 5. Modifier Groups & Options
   const sizeGroup = await prisma.modifierGroup.create({
