@@ -25,7 +25,7 @@ export function validate(schema: AnyZodObject) {
           field: e.path.join('.').replace(/^(body|query|params)\.?/, ''),
           message: e.message,
         }));
-        return ApiResponse.error(res, 'VALIDATION_ERROR', 'Dữ liệu không hợp lệ', 400);
+        return ApiResponse.error(res, 'VALIDATION_ERROR', 'Dữ liệu không hợp lệ', 400, issues);
       }
       return ApiResponse.error(res, 'INTERNAL_SERVER_ERROR', 'Lỗi xác thực dữ liệu', 500);
     }

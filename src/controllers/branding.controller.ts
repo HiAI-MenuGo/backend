@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
+import logger from '../utils/logger';
+
+const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export class BrandingController {
   /**
@@ -29,35 +32,15 @@ export class BrandingController {
         },
       });
 
-      // Nếu chưa có, tạo profile mặc định
+      // Public QR Menu: không tự tạo branding để tránh che lỗi typo tenantId.
       if (!branding) {
-        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-        if (!tenant) {
-          return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
-        }
-        branding = await prisma.tenantBranding.create({
-          data: {
-            tenantId,
-            primaryColor: '#f59e0b',
-            secondaryColor: '#d97706',
-            accentColor: '#fbbf24',
-          },
-          include: {
-            tenant: {
-              select: {
-                name: true,
-                code: true,
-                slug: true,
-                status: true,
-              },
-            },
-          },
-        });
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
       }
 
       return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
     } catch (error: any) {
-      return ApiResponse.error(res, 'DB_ERROR', error.message || 'Lỗi truy vấn thương hiệu', 500);
+      logger.error('getBranding failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);
     }
   }
 
@@ -85,6 +68,12 @@ export class BrandingController {
         bankAccountNo,
         bankAccountName,
       } = req.body;
+
+      for (const [key, val] of Object.entries({ primaryColor, secondaryColor, accentColor })) {
+        if (val && !HEX_COLOR.test(String(val))) {
+          return ApiResponse.error(res, 'INVALID_COLOR', `Màu ${key} không đúng định dạng hex (#rgb/#rrggbb)`, 400);
+        }
+      }
 
       const branding = await prisma.tenantBranding.upsert({
         where: { tenantId },
@@ -119,8 +108,14 @@ export class BrandingController {
 
       return ApiResponse.success(res, branding, 'Cập nhật nhận diện thương hiệu thành công');
     } catch (error: any) {
-      return ApiResponse.error(res, 'UPDATE_ERROR', error.message || 'Lỗi cập nhật thương hiệu', 500);
+      logger.error('updateBranding failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'UPDATE_ERROR', 'Lỗi cập nhật thương hiệu', 500);
     }
+  }
+
+  /** Alias spec: PATCH /api/branding/:tenantId */
+  static async patchBranding(req: Request, res: Response) {
+    return BrandingController.updateBranding(req, res);
   }
 }
 

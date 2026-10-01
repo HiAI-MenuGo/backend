@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
+import logger from '../utils/logger';
 import { VoucherType } from '@prisma/client';
 
 export class VoucherController {
@@ -10,7 +11,8 @@ export class VoucherController {
    */
   static async getVouchers(req: Request, res: Response) {
     try {
-      const tenantId = req.user?.tenantId || (req.query.tenantId as string);
+      // Khóa multi-tenant: chỉ lấy tenantId từ token, không fallback query để tránh IDOR.
+      const tenantId = req.user?.tenantId;
       if (!tenantId) {
         return ApiResponse.error(res, 'MISSING_TENANT', 'Thiếu mã định danh quán', 400);
       }
@@ -32,7 +34,8 @@ export class VoucherController {
 
       return ApiResponse.success(res, vouchers, 'Danh sách mã giảm giá');
     } catch (error: any) {
-      return ApiResponse.error(res, 'DB_ERROR', error.message || 'Lỗi truy vấn voucher', 500);
+      logger.error('getVouchers failed', { stack: error?.stack, tenantId: req.user?.tenantId });
+      return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn voucher', 500);
     }
   }
 
@@ -101,17 +104,19 @@ export class VoucherController {
 
       return ApiResponse.success(res, voucher, 'Tạo voucher thành công', 201);
     } catch (error: any) {
-      return ApiResponse.error(res, 'CREATE_ERROR', error.message || 'Lỗi tạo voucher', 500);
+      logger.error('createVoucher failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'CREATE_ERROR', 'Lỗi tạo voucher', 500);
     }
   }
 
   /**
-   * POST /api/vouchers/apply
+   * POST /api/vouchers/apply (legacy) + POST /api/vouchers/validate (spec C-017)
    * Động cơ kiểm tra & tính toán số tiền giảm giá của voucher
    * Cho phép gọi từ cả QR Menu khách hàng và POS Thu ngân
    */
   static async applyVoucher(req: Request, res: Response) {
     try {
+      // QR/POS có thể chưa đăng nhập: ưu tiên tenant từ token, fallback body nhưng vẫn validate voucher thuộc tenant đó.
       const tenantId = req.user?.tenantId || req.body.tenantId;
       const { code, subTotal = 0 } = req.body;
 
@@ -192,7 +197,60 @@ export class VoucherController {
         'Áp dụng mã giảm giá thành công'
       );
     } catch (error: any) {
-      return ApiResponse.error(res, 'APPLY_ERROR', error.message || 'Lỗi tính toán giảm giá', 500);
+      logger.error('applyVoucher failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'APPLY_ERROR', 'Lỗi tính toán giảm giá', 500);
+    }
+  }
+
+  /** Alias spec: POST /api/vouchers/validate */
+  static async validateVoucher(req: Request, res: Response) {
+    return VoucherController.applyVoucher(req, res);
+  }
+
+  /**
+   * POST /api/vouchers/:id/redeem
+   * Chốt dùng voucher sau thanh toán: tăng usedCount + ghi VoucherUsage.
+   */
+  static async redeemVoucher(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin quán', 401);
+      }
+      const { id } = req.params;
+      const { sessionId, orderId, customerId, discountAmount = 0, discount = 0 } = req.body;
+      const usageSessionId = sessionId || orderId;
+      if (!usageSessionId) {
+        return ApiResponse.error(res, 'MISSING_FIELDS', 'Vui lòng cung cấp sessionId của đơn áp voucher', 400);
+      }
+      const voucher = await prisma.voucher.findFirst({ where: { id, tenantId } });
+      if (!voucher) {
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy voucher', 404);
+      }
+      if (voucher.usageLimit && voucher.usedCount >= voucher.usageLimit) {
+        return ApiResponse.error(res, 'VOUCHER_EXHAUSTED', 'Mã giảm giá đã hết lượt sử dụng', 400);
+      }
+      const updated = await prisma.voucher.update({
+        where: { id },
+        data: { usedCount: { increment: 1 } },
+      });
+      // Ghi lịch sử dùng voucher (không chặn luồng chính nếu thiếu session).
+      try {
+        await prisma.voucherUsage.create({
+          data: {
+            voucherId: id,
+            sessionId: usageSessionId,
+            customerId: customerId || null,
+            discount: Number(discountAmount || discount) || 0,
+          },
+        });
+      } catch (usageErr: any) {
+        logger.error('redeemVoucher usage log failed', { stack: usageErr?.stack, voucherId: id });
+      }
+      return ApiResponse.success(res, updated, 'Đã chốt lượt dùng voucher');
+    } catch (error: any) {
+      logger.error('redeemVoucher failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'REDEEM_ERROR', 'Lỗi chốt lượt dùng voucher', 500);
     }
   }
 
@@ -227,7 +285,33 @@ export class VoucherController {
 
       return ApiResponse.success(res, updated, 'Cập nhật voucher thành công');
     } catch (error: any) {
-      return ApiResponse.error(res, 'UPDATE_ERROR', error.message || 'Lỗi cập nhật voucher', 500);
+      logger.error('updateVoucher failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'UPDATE_ERROR', 'Lỗi cập nhật voucher', 500);
+    }
+  }
+
+  /**
+   * DELETE /api/vouchers/:id (soft-disable: isActive=false)
+   */
+  static async deleteVoucher(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin quán', 401);
+      }
+      const { id } = req.params;
+      const voucher = await prisma.voucher.findFirst({ where: { id, tenantId } });
+      if (!voucher) {
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy voucher', 404);
+      }
+      const updated = await prisma.voucher.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      return ApiResponse.success(res, { id: updated.id, isActive: false }, 'Đã vô hiệu hóa voucher');
+    } catch (error: any) {
+      logger.error('deleteVoucher failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'DELETE_ERROR', 'Lỗi vô hiệu hóa voucher', 500);
     }
   }
 }

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import prisma from '../utils/prisma';
 
 export type UserRole = 'PLATFORM_ADMIN' | 'ADMIN' | 'MANAGER' | 'KITCHEN' | 'CASHIER';
 
@@ -74,7 +75,40 @@ export class AuthService {
     return pub;
   }
 
+  /** DB lookup: tìm user Prisma theo email trong mọi tenant (login chưa có tenant). */
+  static async findDbByEmail(email: string) {
+    try {
+      return await prisma.tenantUser.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+      });
+    } catch {
+      return null;
+    }
+  }
+
   static async login(email: string, password: string) {
+    // 1. Ưu tiên Prisma (dữ liệu seed thật).
+    const dbUser = await this.findDbByEmail(email);
+    if (dbUser) {
+      const ok = await bcrypt.compare(password, dbUser.passwordHash);
+      if (!ok) throw new Error('INVALID_CREDENTIALS');
+      const record: AuthUserRecord = {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        passwordHash: dbUser.passwordHash,
+        role: dbUser.role as UserRole,
+        tenantId: dbUser.tenantId,
+        branchId: dbUser.branchId || '',
+        isActive: dbUser.isActive,
+      };
+      // Ghi nhận đăng nhập (best-effort).
+      prisma.tenantUser.update({ where: { id: dbUser.id }, data: { lastLoginAt: new Date() } }).catch(() => undefined);
+      const accessToken = signAccess(record);
+      const refreshToken = signRefresh(record);
+      return { user: this.toPublic({ ...record, isActive: true }), accessToken, refreshToken };
+    }
+    // 2. Fallback mock in-memory (dev khi chưa migrate/seed).
     const user = this.findByEmail(email);
     if (!user || !user.isActive) throw new Error('INVALID_CREDENTIALS');
     const ok = await bcrypt.compare(password, user.passwordHash);

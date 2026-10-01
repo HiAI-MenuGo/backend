@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
+import logger from '../utils/logger';
 import { SubscriptionPlan, TenantStatus, UserRole } from '@prisma/client';
 
 export class PlatformController {
@@ -45,7 +46,8 @@ export class PlatformController {
 
       return ApiResponse.success(res, tenants, 'Lấy danh sách tenant thành công');
     } catch (error: any) {
-      return ApiResponse.error(res, 'DB_ERROR', error.message || 'Lỗi truy vấn cơ sở dữ liệu', 500);
+      logger.error('getTenants failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn cơ sở dữ liệu', 500);
     }
   }
 
@@ -137,7 +139,8 @@ export class PlatformController {
 
       return ApiResponse.success(res, newTenant, 'Khởi tạo tenant và chủ quán thành công', 201);
     } catch (error: any) {
-      return ApiResponse.error(res, 'CREATE_TENANT_ERROR', error.message || 'Không thể tạo tenant', 500);
+      logger.error('createTenant failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'CREATE_TENANT_ERROR', 'Không thể tạo tenant', 500);
     }
   }
 
@@ -171,7 +174,8 @@ export class PlatformController {
 
       return ApiResponse.success(res, updated, 'Cập nhật gói cước thành công');
     } catch (error: any) {
-      return ApiResponse.error(res, 'UPDATE_ERROR', error.message || 'Lỗi cập nhật subscription', 500);
+      logger.error('updateSubscription failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'UPDATE_ERROR', 'Lỗi cập nhật subscription', 500);
     }
   }
 
@@ -195,7 +199,8 @@ export class PlatformController {
         totalUsers,
       }, 'Thống kê nền tảng SaaS');
     } catch (error: any) {
-      return ApiResponse.error(res, 'STATS_ERROR', error.message || 'Lỗi lấy thống kê', 500);
+      logger.error('getPlatformStats failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'STATS_ERROR', 'Lỗi lấy thống kê', 500);
     }
   }
 }
