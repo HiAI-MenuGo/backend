@@ -43,6 +43,28 @@ async function main() {
 
   console.log(`✅ Tenant seeded: ${tenant.name} (${tenant.id})`);
 
+  // Clean up any existing child data for idempotent re-runs
+  await prisma.voucherUsage.deleteMany({ where: { voucher: { tenantId: tenant.id } } });
+  await prisma.voucher.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.paymentTransaction.deleteMany({ where: { session: { tenantId: tenant.id } } });
+  await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { tenantId: tenant.id } } } });
+  await prisma.orderItem.deleteMany({ where: { order: { tenantId: tenant.id } } });
+  await prisma.order.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.orderSession.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.zReport.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.recipe.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
+  await prisma.inventoryLog.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.ingredient.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.itemModifierGroup.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
+  await prisma.menuItem.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.modifierOption.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.modifierGroup.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.menuCategory.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.table.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.area.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.customer.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.membershipTier.deleteMany({ where: { tenantId: tenant.id } });
+
   // 2. Create Default Branch
   const branch = await prisma.branch.upsert({
     where: {
@@ -132,10 +154,10 @@ async function main() {
       displayOrder: 1,
       tables: {
         create: [
-          { tenantId: tenant.id, code: 'Bàn 01', name: 'Bàn 01 - Cửa Sổ', capacity: 2, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, code: 'Bàn 02', name: 'Bàn 02 - Trung Tâm', capacity: 4, status: TableStatus.OCCUPIED },
-          { tenantId: tenant.id, code: 'Bàn 03', name: 'Bàn 03 - Góc Ấm', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, code: 'Bàn 04', name: 'Bàn 04 - Nhóm', capacity: 6, status: TableStatus.EMPTY },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 01', name: 'Bàn 01 - Cửa Sổ', capacity: 2, status: TableStatus.EMPTY },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 02', name: 'Bàn 02 - Trung Tâm', capacity: 4, status: TableStatus.OCCUPIED },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 03', name: 'Bàn 03 - Góc Ấm', capacity: 4, status: TableStatus.EMPTY },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 04', name: 'Bàn 04 - Nhóm', capacity: 6, status: TableStatus.EMPTY },
         ],
       },
     },
@@ -149,9 +171,9 @@ async function main() {
       displayOrder: 2,
       tables: {
         create: [
-          { tenantId: tenant.id, code: 'Bàn 05', name: 'Bàn 05 - Hiên Trà', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, code: 'Bàn 06', name: 'Bàn 06 - Hồ Cá', capacity: 4, status: TableStatus.EMPTY },
-          { tenantId: tenant.id, code: 'VIP-01', name: 'Phòng VIP Hoàng Gia', capacity: 10, status: TableStatus.RESERVED },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 05', name: 'Bàn 05 - Hiên Trà', capacity: 4, status: TableStatus.EMPTY },
+          { tenantId: tenant.id, branchId: branch.id, code: 'Bàn 06', name: 'Bàn 06 - Hồ Cá', capacity: 4, status: TableStatus.EMPTY },
+          { tenantId: tenant.id, branchId: branch.id, code: 'VIP-01', name: 'Phòng VIP Hoàng Gia', capacity: 10, status: TableStatus.RESERVED },
         ],
       },
     },
