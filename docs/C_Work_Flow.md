@@ -532,7 +532,7 @@ git push origin feat/be-admin-report-c
 - **Backend `feat/be-admin-report-c` → `3198223` (fix(db): run initial multi-tenant migration and seed database)**:
   - Cấu hình DATABASE_URL local: `postgresql://postgres:postgres@localhost:5432/hiai_menugo?schema=public` (Postgres 17 local).
   - Chạy thành công `npx prisma migrate dev --name init_multi_tenant` → sinh thư mục `prisma/migrations/20261001044147_init_multi_tenant/migration.sql`.
-  - Sửa `prisma/seed.ts` (thêm `branchId` bắt buộc vào nested create của `Table`, đảm bảo idempotent 100% khi chạy lại). Chạy `npx prisma db seed` nạp đủ 492 records.
+  - Sửa `prisma/seed.ts`: guard an toàn prod — seed chỉ wipe + nạp lại catalog khi tenant chưa có phiên vận hành nào (hoặc `ALLOW_SEED_WIPE=true` tường minh); tenant đã có orders/sessions thì chỉ upsert tenant/branch/users rồi dừng, tuyệt đối không xóa dữ liệu thật. Ghi chú `branchId` bắt buộc trong nested create của `Table` là fix đúng schema (`@@unique[branchId, code]`), không phải cơ chế idempotent. Chạy `npx prisma db seed` nạp dữ liệu mẫu (seed.ts 514 dòng; con số 492 trước đây thiếu evidence nên bỏ).
   - Verify API thực tế: `GET /api/health` (200), `POST /api/auth/login` với `admin@menu-go.vn` / `123456` xác thực từ Prisma DB thật (200), `GET /api/admin/users` (5 users cùng tenant, 0 cross-tenant), `GET /api/vouchers` (2 vouchers thật), `GET /api/z-report/shift-summary` (200), token giả mạo bị chặn 401. `tsc --noEmit` & `npm run build` xanh 100%.
 - **Frontend `feat/web-frontend-c` → `c53c21b` (feat(admin): connect real backend apis and state handlers across admin pages)**:
   - `admin/menu`: Thay mock bằng `apiFetch('/menu/items')`, `toggleSoldOut` gọi `PATCH /menu/items/:id/sold-out`. Thêm skeleton loading, empty state, error state có nút "Thử lại", banner thông báo rõ ràng tính năng CRUD món chi tiết đang do Team A/B hoàn thiện.
@@ -548,3 +548,15 @@ git push origin feat/be-admin-report-c
   - Gửi email mời nhân sự tự động bằng Nodemailer (hiện tạo trực tiếp qua API).
   - File âm thanh `public/sounds/new_order.mp3` thông báo chuông bếp KDS.
   - Phủ đa ngôn ngữ i18n toàn diện cho tất cả các trang Admin còn lại.
+
+### 01/10/2026 — Vòng fix sau review P1 (Backend `7931558`, Frontend `eb1f77b`)
+- **Backend `feat/be-admin-report-c` → `7931558` (fix(db): guard seed wipe behind operational-data check)**: `prisma/seed.ts` bỏ wipe mù — chỉ xóa-nạp lại catalog khi tenant chưa có `OrderSession` nào hoặc `ALLOW_SEED_WIPE=true`; tenant đã có dữ liệu vận hành thì chỉ upsert tenant/branch/users rồi dừng. Ghi chú `ALLOW_SEED_WIPE` vào `.env.example`. Chạm: `prisma/seed.ts`, `.env.example`. Verify: `tsc --noEmit` + `npm run build` xanh.
+- **Frontend `feat/web-frontend-c` → `eb1f77b` (fix(admin): honest bom lock, authed export download, real table data, error surfacing)**:
+  - `BomEditor.tsx`: khóa nút Lưu khi endpoint BOM chưa tồn tại (`bomApiReady=false`), lưu thật qua `PUT /menu/items/:id/bom` khi API sẵn sàng — hết báo "đã lưu" giả.
+  - `z-report/page.tsx`: export tải qua `fetch` kèm `Authorization: Bearer` + blob download (excel) / tab in 80mm (pdf) — hết 401 im lặng.
+  - `tables/page.tsx`: bỏ `customerCount || 4` giả và `replace('tbl-','')`, dùng `code/capacity` thật, truyền `logoUrl` từ `/branding` vào QR.
+  - `settings/bank/page.tsx`: state rỗng ban đầu + cảnh báo "Chưa cấu hình — VietQR không hoạt động".
+  - `inventory/page.tsx`: `type` điều chỉnh theo dấu số lượng (`ADD`/`SUBTRACT`).
+  - `vouchers/page.tsx`, `roles/page.tsx`: toggle thất bại rollback + hiện banner lỗi đỏ.
+  - Verify: `tsc --noEmit` + `next build` 23 routes xanh.
+- **Còn lại (chấp nhận, theo dõi)**: QR bàn chưa mã hóa JWT (spec C-023, cần backend phối hợp); `order.note` KDS hiển thị 1 dòng (không thuộc diện `item.note` bắt buộc); chart dashboard màu cứng (ngoài P1).
