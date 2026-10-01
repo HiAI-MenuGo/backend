@@ -519,3 +519,12 @@ git push origin feat/be-admin-report-c
 
 > [!TIP]
 > Sử dụng `QRCodeSVG` với `level="H"` là bắt buộc khi chèn logo vào giữa QR. Level H cho phép 30% diện tích bị che mà vẫn quét được. Các level thấp hơn sẽ khiến QR không đọc được khi có logo.
+
+---
+
+## 📝 Nhật Ký Tiến Độ Thành Viên C (RULES §6)
+
+### 01/10/2026 — Vòng fix review (Backend `bf09a05`, Frontend `c4566c1`)
+- **Backend `feat/be-admin-report-c` → `bf09a05`**: khớp spec routes (`POST /vouchers/validate` alias + `DELETE /:id` + `POST /:id/redeem` tăng `usedCount`; `GET /z-report/shift-summary`, `POST /close-shift`, `GET /export?format=excel|pdf`; `PATCH /branding/:tenantId`; `GET /admin/users/roles`); khóa `tenantId` (bỏ fallback query, bỏ auto-create branding public, MANAGER scope `branchId`); gắn Zod `validate()` + `details`; logger file `logs/`; `auth.service` login ưu tiên Prisma; hết leak `error.message`. Chạm: `voucher/zreport/branding/platform/user.controller.ts`, `voucher/zreport/branding/user.routes.ts`, `auth.service.ts`, `logger.ts`, `response.ts`, `validate.ts`, `package.json` (scripts `db:migrate/db:deploy`). Verify: `tsc --noEmit` + `npm run build` xanh.
+- **Frontend `feat/web-frontend-c` → `c4566c1`**: `lib/format-note.tsx` (note đa dòng `•` cho KDS/POS/print); modal món lọc Đường/Đá không phân biệt hoa-thường + `textarea`; mock menu gắn `category.isDrink`; POS áp voucher `/vouchers/validate` + tra SĐT + nút Hủy món `justify-end rose` + QR `level="H"`; KDS mute `localStorage` + Notification; order-status `!isInitializing` + `order:item:status`; `TableQRCode` logo + tải PNG; mới `admin/integrations/page.tsx`, `table/[tableId]/loading.tsx`, `components/print/ReceiptPrintTemplate.tsx`, `@media print` 80mm, sidebar thêm `API & Webhook`. Verify: `tsc --noEmit` + `next build` xanh (23 routes).
+- **Còn nợ (vòng tiếp theo)**: `prisma/migrations` cần DB thật; export PDF/Excel native (`pdfkit/exceljs`); invite mail Nodemailer; Admin pages lên dữ liệu thật thay mock fallback; `public/sounds/new_order.mp3`; phủ i18n toàn app.
