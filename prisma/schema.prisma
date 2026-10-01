@@ -1,0 +1,683 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// 1. ENUMS
+// ==========================================
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  PENDING
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  ADMIN
+  MANAGER
+  KITCHEN
+  CASHIER
+}
+
+enum TableStatus {
+  EMPTY
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+enum SessionStatus {
+  OPEN
+  BILLING
+  CLOSED
+  VOIDED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DONE
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  VIETQR
+  CARD
+  MOMO
+  ZALOPAY
+}
+
+enum VoucherType {
+  PERCENT
+  FIXED
+}
+
+enum InventoryAdjustmentType {
+  RESTOCK
+  USAGE
+  LOSS
+  DAMAGE
+  RETURN
+}
+
+// ==========================================
+// 2. SAAS PLATFORM & TENANT MODELS
+// ==========================================
+
+model Tenant {
+  id            String           @id @default(uuid())
+  code          String           @unique
+  name          String
+  slug          String           @unique
+  ownerEmail    String
+  ownerPhone    String?
+  status        TenantStatus     @default(ACTIVE)
+  plan          SubscriptionPlan @default(STARTER)
+  planExpiresAt DateTime?
+  maxBranches   Int              @default(1)
+  maxUsers      Int              @default(10)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  // Relationships
+  branding        TenantBranding?
+  branches        Branch[]
+  users           TenantUser[]
+  categories      MenuCategory[]
+  menuItems       MenuItem[]
+  modifierGroups  ModifierGroup[]
+  modifierOptions ModifierOption[]
+  orderSessions   OrderSession[]
+  orders          Order[]
+  ingredients     Ingredient[]
+  inventoryLogs   InventoryLog[]
+  customers       Customer[]
+  membershipTiers MembershipTier[]
+  vouchers        Voucher[]
+  zReports        ZReport[]
+  apiKeys         ApiKey[]
+  webhooks        WebhookConfig[]
+
+  @@index([status])
+  @@index([code])
+}
+
+model TenantBranding {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique
+  logoUrl         String?
+  bannerUrl       String?
+  primaryColor    String   @default("#f59e0b") // Amber 500
+  secondaryColor  String   @default("#d97706") // Amber 600
+  accentColor     String   @default("#fbbf24")
+  bankCode        String? // e.g. "MB", "VCB"
+  bankAccountNo   String?
+  bankAccountName String?
+  wifiSsid        String?
+  wifiPassword    String?
+  footerText      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Branch {
+  id           String   @id @default(uuid())
+  tenantId     String
+  code         String
+  name         String
+  address      String?
+  phone        String?
+  latitude     Float?
+  longitude    Float?
+  radiusMeters Float    @default(100.0) // Geofence
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users         TenantUser[]
+  areas         Area[]
+  tables        Table[]
+  sessions      OrderSession[]
+  orders        Order[]
+  ingredients   Ingredient[]
+  inventoryLogs InventoryLog[]
+  zReports      ZReport[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+// ==========================================
+// 3. USER & AUTHENTICATION (RBAC)
+// ==========================================
+
+model TenantUser {
+  id           String    @id @default(uuid())
+  tenantId     String
+  branchId     String?
+  email        String
+  name         String
+  phone        String?
+  passwordHash String
+  role         UserRole  @default(CASHIER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch          Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  refreshTokens   RefreshToken[]
+  createdZReports ZReport[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, branchId])
+  @@index([tenantId, role])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user TenantUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ==========================================
+// 4. FLOOR & TABLE MANAGEMENT
+// ==========================================
+
+model Area {
+  id           String   @id @default(uuid())
+  tenantId     String
+  branchId     String
+  name         String // e.g., "Tầng 1", "Sân Vườn", "Phòng VIP"
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tables Table[]
+
+  @@index([tenantId, branchId])
+}
+
+model Table {
+  id        String      @id @default(uuid())
+  tenantId  String
+  branchId  String
+  areaId    String?
+  code      String // e.g. "Bàn 01", "VIP-02"
+  name      String
+  capacity  Int         @default(4)
+  status    TableStatus @default(EMPTY)
+  qrToken   String      @unique @default(uuid())
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  branch   Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  area     Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  sessions OrderSession[]
+
+  @@unique([branchId, code])
+  @@index([tenantId, branchId, status])
+}
+
+// ==========================================
+// 5. MENU & MODIFIERS
+// ==========================================
+
+model MenuCategory {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String // e.g. "Cà phê", "Trà trái cây", "Đồ ăn nhẹ"
+  slug         String
+  icon         String?
+  isDrink      Boolean  @default(true)
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, isActive])
+}
+
+model MenuItem {
+  id           String   @id @default(uuid())
+  tenantId     String
+  categoryId   String
+  code         String?
+  name         String
+  description  String?
+  basePrice    Float
+  costPrice    Float    @default(0.0)
+  imageUrl     String?
+  isSoldOut    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category       MenuCategory        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  modifierGroups ItemModifierGroup[]
+  recipeItems    Recipe[]
+  orderItems     OrderItem[]
+
+  @@index([tenantId, categoryId, isActive])
+  @@index([tenantId, isSoldOut])
+}
+
+model ModifierGroup {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String // "Size", "Mức đường", "Mức đá", "Topping"
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  isRequired Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  options   ModifierOption[]
+  menuItems ItemModifierGroup[]
+
+  @@index([tenantId])
+}
+
+model ModifierOption {
+  id              String   @id @default(uuid())
+  tenantId        String
+  modifierGroupId String
+  name            String // "Size M", "50% Đá", "Trân Châu Trắng"
+  extraPrice      Float    @default(0.0)
+  isDefault       Boolean  @default(false)
+  isSoldOut       Boolean  @default(false)
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  modifierGroup  ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  orderModifiers OrderItemModifier[]
+
+  @@index([tenantId, modifierGroupId])
+}
+
+model ItemModifierGroup {
+  id              String @id @default(uuid())
+  menuItemId      String
+  modifierGroupId String
+  displayOrder    Int    @default(0)
+
+  menuItem      MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, modifierGroupId])
+}
+
+// ==========================================
+// 6. INVENTORY & RECIPES (BOM)
+// ==========================================
+
+model Ingredient {
+  id           String   @id @default(uuid())
+  tenantId     String
+  branchId     String
+  code         String
+  name         String
+  unit         String // "g", "ml", "cái", "hộp"
+  currentStock Float    @default(0.0)
+  minStock     Float    @default(10.0)
+  costPerUnit  Float    @default(0.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  recipeItems Recipe[]
+  logs        InventoryLog[]
+
+  @@unique([branchId, code])
+  @@index([tenantId, branchId])
+}
+
+model Recipe {
+  id           String   @id @default(uuid())
+  menuItemId   String
+  ingredientId String
+  quantity     Float // Định lượng cho 1 đơn vị món
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, ingredientId])
+}
+
+model InventoryLog {
+  id           String                  @id @default(uuid())
+  tenantId     String
+  branchId     String
+  ingredientId String
+  type         InventoryAdjustmentType
+  changeQty    Float // Âm là xuất/dùng/mất, dương là nhập
+  remainingQty Float
+  reason       String?
+  performedBy  String? // userId
+  referenceId  String? // orderId / stockTakeId
+  createdAt    DateTime                @default(now())
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, ingredientId])
+  @@index([createdAt])
+}
+
+// ==========================================
+// 7. ORDER SESSIONS, ORDERS & PAYMENTS
+// ==========================================
+
+model OrderSession {
+  id             String        @id @default(uuid())
+  tenantId       String
+  branchId       String
+  tableId        String?
+  customerId     String?
+  sessionCode    String // e.g. "SES-20261001-001"
+  status         SessionStatus @default(OPEN)
+  subTotal       Float         @default(0.0)
+  discountAmount Float         @default(0.0)
+  finalAmount    Float         @default(0.0)
+  voucherCode    String?
+  openedAt       DateTime      @default(now())
+  closedAt       DateTime?
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table        Table?               @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orders       Order[]
+  transactions PaymentTransaction[]
+
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, tableId])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  tenantId    String
+  branchId    String
+  sessionId   String
+  orderCode   String // e.g. "#101"
+  orderType   OrderType   @default(DINE_IN)
+  status      OrderStatus @default(PENDING)
+  totalAmount Float       @default(0.0)
+  note        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant  Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  session OrderSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  items   OrderItem[]
+
+  @@index([tenantId, branchId, status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String          @id @default(uuid())
+  orderId    String
+  menuItemId String
+  itemName   String
+  unitPrice  Float
+  quantity   Int             @default(1)
+  totalPrice Float
+  status     OrderItemStatus @default(PENDING)
+  note       String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem            @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  modifiers OrderItemModifier[]
+
+  @@index([orderId, status])
+}
+
+model OrderItemModifier {
+  id               String @id @default(uuid())
+  orderItemId      String
+  modifierOptionId String
+  modifierName     String
+  extraPrice       Float  @default(0.0)
+
+  orderItem      OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifierOption ModifierOption @relation(fields: [modifierOptionId], references: [id], onDelete: Restrict)
+
+  @@index([orderItemId])
+}
+
+model PaymentTransaction {
+  id             String        @id @default(uuid())
+  sessionId      String
+  amount         Float
+  method         PaymentMethod @default(CASH)
+  status         PaymentStatus @default(UNPAID)
+  referenceNo    String? // Bank / VietQR reference
+  qrContent      String? // EMVCo QR code string
+  paymentGateway String? // "VIETQR", "SEPAY"
+  receivedAmount Float?
+  changeAmount   Float?
+  metadata       String? // JSON payload
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+
+  session OrderSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status])
+}
+
+// ==========================================
+// 8. CUSTOMERS, LOYALTY & VOUCHERS
+// ==========================================
+
+model MembershipTier {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String // "Đồng", "Bạc", "Vàng", "Kim Cương"
+  minPoints    Int      @default(0)
+  discountRate Float    @default(0.0) // % giảm giá (5 = 5%)
+  color        String   @default("#94a3b8")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customers Customer[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tierId        String?
+  name          String
+  phone         String
+  email         String?
+  loyaltyPoints Int      @default(0)
+  totalSpent    Float    @default(0.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tier          MembershipTier? @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  sessions      OrderSession[]
+  voucherUsages VoucherUsage[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, phone])
+}
+
+model Voucher {
+  id          String      @id @default(uuid())
+  tenantId    String
+  code        String
+  description String?
+  type        VoucherType @default(PERCENT)
+  value       Float // % hoặc số tiền cố định (VNĐ)
+  maxDiscount Float? // Mức giảm tối đa nếu type = PERCENT
+  minOrderVal Float       @default(0.0)
+  usageLimit  Int?
+  usedCount   Int         @default(0)
+  isActive    Boolean     @default(true)
+  startDate   DateTime    @default(now())
+  endDate     DateTime
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usages VoucherUsage[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, endDate])
+}
+
+model VoucherUsage {
+  id         String   @id @default(uuid())
+  voucherId  String
+  customerId String?
+  sessionId  String
+  discount   Float
+  usedAt     DateTime @default(now())
+
+  voucher  Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([voucherId])
+  @@index([sessionId])
+}
+
+// ==========================================
+// 9. Z-REPORT & SHIFT ACCOUNTING
+// ==========================================
+
+model ZReport {
+  id            String   @id @default(uuid())
+  tenantId      String
+  branchId      String
+  userId        String // Thu ngân / Quản lý chốt ca
+  shiftName     String // "Ca Sáng", "Ca Tối", "Chốt Ngày"
+  startTime     DateTime
+  endTime       DateTime @default(now())
+  openingCash   Float    @default(0.0) // Tiền đầu ca
+  cashRevenue   Float    @default(0.0) // Doanh thu tiền mặt
+  qrRevenue     Float    @default(0.0) // Doanh thu VietQR
+  cardRevenue   Float    @default(0.0) // Doanh thu thẻ
+  totalDiscount Float    @default(0.0) // Tổng tiền khuyến mãi
+  totalRevenue  Float    @default(0.0) // Tổng thực thu
+  orderCount    Int      @default(0)
+  voidedCount   Int      @default(0)
+  actualCash    Float    @default(0.0) // Tiền mặt đếm thực tế
+  discrepancy   Float    @default(0.0) // Chênh lệch (actualCash - (openingCash + cashRevenue))
+  note          String?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   TenantUser @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, createdAt])
+}
+
+// ==========================================
+// 10. INTEGRATIONS, API KEYS & WEBHOOKS
+// ==========================================
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String // e.g. "POS Integration Key"
+  keyHash     String    @unique
+  prefix      String // e.g. "hiai_live_..."
+  permissions String[] // ["orders:read", "orders:write", ...]
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+}
+
+model WebhookConfig {
+  id        String   @id @default(uuid())
+  tenantId  String
+  url       String
+  secret    String
+  events    String[] // ["order:paid", "order:cancelled", "stock:low"]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+}
