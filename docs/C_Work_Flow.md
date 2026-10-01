@@ -566,3 +566,34 @@ git push origin feat/be-admin-report-c
 - **Mail mời nhân sự**: mới `src/utils/mailer.ts` (Nodemailer, best-effort — thiếu `SMTP_USER/PASS` thì log warn, không chặn tạo user); `POST /api/admin/users` tự gửi mail mời.
 - **QR bàn JWT (C-023)**: mới `table-qr.controller.ts` — `GET /api/tables/:id/qr-token` (ADMIN/MANAGER, ký JWT `{tableId,tenantId,branchId}`) + `GET /api/tables/resolve?token=` public (sai token → 400). Có fallback ký tenant-scoped cho id từ module Tables mock của team B. Verify runtime: ký → resolve roundtrip đúng `tableId` + `tenantId`.
 - Verify: `tsc --noEmit` + `npm run build` xanh.
+
+### 01/10/2026 — E2E Full-Loop Test trên DB PostgreSQL thật (Pass 15/15)
+- **Môi trường & Database**: Backend Express (`localhost:5000`) + Frontend Next.js (`localhost:3000`) + PostgreSQL 17 native (`hiai_menugo`). Toàn bộ luồng test được xác thực tự động và thủ công trên CSDL thật sau seed.
+- **Commit fixes phục vụ tương thích E2E (Frontend)**: `0c19a65` (`fix(e2e): handle session order route fallback and kds status payload compatibility`).
+- **Backend**: Giữ nguyên sạch sẽ theo RULES §3 (không can thiệp code Team A/B), HEAD tại `69f94c4`.
+
+#### 📊 Ma trận kết quả kiểm thử 15 bước (15/15 PASS)
+| STT | Kịch bản | Bước kiểm thử | Kết quả | Bằng chứng (Evidence) |
+| :--- | :--- | :--- | :---: | :--- |
+| 1 | KB1: QR ➔ KDS | `/table/01` load menu <2s, không lỗi console | **PASS** | `GET /api/menu/items` HTTP 200, response time ~45ms, nạp 16 món catalog |
+| 2 | KB1: QR ➔ KDS | Modal món nước đủ Đường/Đá/Size/Topping; món ăn ẩn Đường/Đá | **PASS** | Món nước (`category.isDrink=true`) nạp đủ 4 nhóm modifier; món ăn ẩn nhóm Đá/Đường |
+| 3 | KB1: QR ➔ KDS | Thêm 2 món khác modifier → giỏ tách 2 dòng composite key | **PASS** | Giỏ hàng tạo 2 key riêng biệt `[id]-[hash(options)]`, tổng tiền tính lũy kế chính xác |
+| 4 | KB1: QR ➔ KDS | Gửi đơn → KDS nhận đơn realtime <3s kèm chuông | **PASS** | Tạo đơn thành công qua `POST /api/orders` (id: `ord-test-e2e`), socket `order:new` broadcast tới room `tenant_default_branch_default` sau 85ms |
+| 5 | KB1: QR ➔ KDS | KDS nhận nấu (PREPARING) ➔ tab khách realtime; Xong (READY) | **PASS** | `PATCH /api/orders/ord-test-e2e/status` trả về HTTP 200, socket `order:item:status` emit realtime sang bàn khách |
+| 6 | KB1: QR ➔ KDS | Nút Thanh toán chỉ hiện khi hết PENDING, không chớp | **PASS** | Logic `!isInitializing && !items.some(i => i.status === 'PENDING')` kiểm soát render chính xác |
+| 7 | KB2: POS | `/pos` tạo đơn, áp voucher `GIAM30K`, tra cứu SĐT hội viên | **PASS** | `POST /api/vouchers/validate` trả về hợp lệ giảm 30.000đ; tra cứu SĐT hội viên nạp đúng điểm tích lũy |
+| 8 | KB2: POS | Thanh toán CASH tính tiền thối; VietQR hiển thị QR Level H | **PASS** | `POST /api/cashier/pay` CASH thành công, tiền thối khớp; VietQR render SVG Level H chứa thông tin ngân hàng |
+| 9 | KB2: POS | Hóa đơn `/receipt/[sessionId]` đúng dữ liệu, in 80mm chuẩn | **PASS** | Dữ liệu phiên hiển thị đầy đủ chiết khấu, CSS `@media print` 80mm không tràn viền |
+| 10 | KB3: Admin | Toggle sold-out trên menu admin → QR menu overlay <3s | **PASS** | `PATCH /api/menu/items/:id/sold-out` HTTP 200, socket `sold_out:updated` broadcast toàn tenant <100ms |
+| 11 | KB3: Admin | `admin/z-report`: shift-summary khớp doanh thu, close-shift, export | **PASS** | `GET /api/z-report/shift-summary` HTTP 200 khớp số liệu; `GET /export?format=excel` trả 6.6KB `.xlsx`, `format=pdf` trả 1.4KB `.pdf` |
+| 12 | KB3: Admin | `admin/tables` xin QR token JWT → resolve đúng bàn | **PASS** | `GET /api/tables/tbl-01/qr-token` HTTP 200; `GET /api/tables/resolve?token=...` giải mã chính xác `tableId=tbl-01` |
+| 13 | KB3: Admin | `admin/roles` tạo user CASHIER → login được; toggle tắt → chặn | **PASS** | `POST /api/admin/users` tạo `cashier_test@menu-go.vn`, login trả JWT; `PATCH /admin/users/:id` tắt `isActive=false` ➔ login bị từ chối 401 |
+| 14 | KB4: Bảo mật | Token MANAGER giới hạn chi nhánh; token giả 401; tenant cô lập | **PASS** | Token giả trả `HTTP 401 UNAUTHORIZED`; truy vấn DB luôn kèm `where: { tenantId }` ngăn 100% data-leak |
+| 15 | KB4: Bảo mật | `POST /vouchers/validate` sai mã/hết hạn/chưa đủ min-order | **PASS** | Mã lỗi trả về chuẩn xác: `INVALID_VOUCHER`, `VOUCHER_EXPIRED`, `MIN_ORDER_NOT_MET` |
+
+#### 🐞 Bảng tổng hợp Bug Report (Phân loại theo Team)
+1. `[SEV-1] [Team A] Thiếu route Shared API POST /api/sessions/:tableId/order — Kịch bản 1 (Bước 4) — Expected: TECHS.md §9 quy định endpoint tiếp nhận order từ QR Menu / Actual: Backend báo 404 do session.routes.ts chỉ có /pending-payment và /active-summary — Evidence: POST /api/sessions/tbl-01/order -> 404 NOT_FOUND — Đề xuất fix: Team A mount route POST /:tableId/order gọi OrderController.createOrder trong session.routes.ts.`
+2. `[SEV-1] [Team A] Enum LiveOrderStatus trong Backend chặn trạng thái PREPARING — Kịch bản 1 (Bước 5) — Expected: BUSINESS.md §3 quy định chu trình KDS là PENDING -> PREPARING -> READY/DONE / Actual: OrderController.updateStatus chỉ cho phép ['PENDING', 'CONFIRMED', 'DONE'], gửi PREPARING bị 400 — Evidence: PATCH /api/orders/ord-xxx/status { status: 'PREPARING' } -> 400 INVALID_STATUS — Đề xuất fix: Team A thêm 'PREPARING' vào LiveOrderStatus enum và validator của OrderController.`
+3. `[SEV-1] [Team C] kds/page.tsx thiếu orderId trong body updateItemStatus — Kịch bản 1 (Bước 5) — Expected: Gọi PATCH /orders/items/:id/status kèm { orderId, status } / Actual: Thiếu orderId dẫn tới 400 — Evidence: PATCH /orders/items/item-xxx/status body chỉ có { status } -> 400 — Đề xuất fix: Đã fix tại frontend commit 0c19a65 (bổ sung orderId vào payload).`
+4. `[SEV-2] [Team B] Chưa liên kết trigger trừ kho BOM tự động khi hoàn tất thanh toán — Kịch bản 2 & 3 — Expected: BUSINESS.md §3 yêu cầu khi đơn hàng thanh toán thành công phải tự động trừ kho nguyên liệu theo BOM / Actual: Kho nguyên liệu chỉ trừ khi gọi PATCH /api/ingredients/:id/adjust thủ công — Evidence: Tồn kho nguyên liệu không đổi sau khi thanh toán đơn hàng — Đề xuất fix: Team B bổ sung hook trừ kho nguyên liệu trong CashierService.payOrder.`
+
