@@ -670,3 +670,29 @@ git push origin feat/be-admin-report-c
 - **Bổ sung gate CI**: thêm `npm run check:i18n` (`scripts/check-i18n.mjs`) — fail (exit 1) nếu vi/en lệch key, nếu code gọi key thiếu, hoặc nếu giá trị trong `en.json` còn chứa ký tự tiếng Việt. Đã kiểm chứng gate bắt được lỗi bằng cách cố tình xoá key rồi khôi phục.
 - **Sửa nhật ký**: bỏ con số "14 namespaces" (thực tế 20 namespaces, không có `auth`); bỏ claim "100% ảnh có lazy"; ghi rõ số Lighthouse là **kết quả đo một lần trên máy local, không phải cam kết**, và thừa nhận Performance 84 **chưa đạt** ngưỡng >90 của C-025.
 - **Verification**: `npm run check:i18n` exit 0 (`vi=508`, `en=508`, `used=388`, `missing=0`); `npx tsc --noEmit` exit 0; `npm run build` xanh 23 routes.
+
+### 02/10/2026 — Vòng Polish Backend (P1-1, P1-2, P1-3) dứt điểm nợ kỹ thuật (Commits `f9fff3b`, `b36419d`, `36c7aad`)
+- **Giai đoạn 1 — Seed Catalog Idempotent (P1-1)** (Commit `f9fff3b`):
+  - `backend/prisma/schema.prisma`: Thêm unique constraints `@@unique([tenantId, code])` cho `MenuItem`, `@@unique([tenantId, name])` cho `ModifierGroup`, `@@unique([modifierGroupId, name])` cho `ModifierOption`. Sinh migration `20261002090000_catalog_idempotent_uniques`.
+  - `backend/prisma/seed.ts`: Chuyển 100% catalog (`modifierGroup` + options, `menuCategory`, `menuItem` + `itemModifierGroup`, `ingredient` + `recipe`, `membershipTier`, `customer`, `voucher`) sang `upsert`.
+  - Branding: Tách `prisma.tenantBranding.upsert` riêng biệt để rerun luôn cập nhật logo, màu sắc, ngân hàng thay vì bỏ qua.
+  - Bảo toàn guard an toàn `skipCatalog` khi tenant đã có `orderSession` vận hành (`ALLOW_SEED_WIPE=true` khi cần wipe tường minh). Bỏ khối xóa mù cũ (`deleteMany`).
+  - **Verify Runtime**: Chạy `npx prisma db seed` 3 lần liên tiếp: exit 0, đếm record khớp tuyệt đối không tăng/không duplicate: `tenant: 1`, `branding: 1`, `branch: 1`, `user: 7`, `area: 2`, `table: 7`, `modifierGroup: 4`, `modifierOption: 14`, `menuCategory: 3`, `menuItem: 5`, `itemModifierGroup: 10`, `ingredient: 4`, `recipe: 6`, `membershipTier: 4`, `customer: 2`, `voucher: 2`.
+- **Giai đoạn 2 — Export Z-Report Dấu Tiếng Việt + Font + Logo (P1-2)** (Commit `b36419d`):
+  - Bổ sung font Unicode chuẩn `assets/fonts/DejaVuSans.ttf` (757KB) và `assets/fonts/DejaVuSans-Bold.ttf` (705KB).
+  - `backend/src/controllers/zreport.controller.ts`: Sửa 100% nhãn không dấu sang tiếng Việt chuẩn có dấu (`Doanh thu tiền mặt`, `Doanh thu VietQR`, `Doanh thu thẻ`, `Tổng doanh thu`, `Số đơn hoàn thành`, `Số món hủy`, `Giảm giá voucher`, header Excel/CSV `Chỉ tiêu` / `Giá trị`).
+  - PDF khổ 80mm nhiệt: `doc.registerFont` nhúng font `DejaVuSans` & `DejaVuSans-Bold`, render header tên quán (`tenant.name`) + chi nhánh (`branch.name`), tiêu đề `BÁO CÁO KẾT CA (Z-REPORT)`, dòng `Tổng doanh thu` in đậm to rõ, footer `Xuất lúc: ...`.
+  - **Verify Runtime**: Gọi export thực tế thành công:
+    - Excel: file `z-report-f2db879f-70d1-42ef-98f3-1195966537af-2026-10-02.xlsx` (6,768 bytes), 8 rows có dấu tiếng Việt chuẩn.
+    - PDF: file `z-report-f2db879f-70d1-42ef-98f3-1195966537af-2026-10-02.pdf` (21,455 bytes), header `%PDF-`, nhúng font DejaVuSans thật, không lỗi font chữ, không ô vuông.
+- **Giai đoạn 3 — Mail Invite Nhân Sự HTML (P1-3)** (Commit `36c7aad`):
+  - `backend/src/utils/mailer.ts`: Thêm hàm `generateStaffInviteHtml` với template HTML inline-CSS chuyên nghiệp, song ngữ VI (chính) + EN (phụ) theo tinh thần C-024. Đầy đủ logo quán/tên thương hiệu, tên nhân viên, vai trò (badge amber), nút CTA `Thiết lập mật khẩu / Set Up Password`, dòng cảnh báo thời hạn `Liên kết có hiệu lực trong vòng 24 giờ / This link is valid for 24 hours`, footer bản quyền.
+  - `backend/src/controllers/user.controller.ts`: Truy vấn kèm `branding` và truyền `logoUrl` vào `sendStaffInviteMail`.
+  - Giữ nguyên best-effort: Thiếu SMTP log rõ cảnh báo `mail skipped: invite email not sent` và trả về `false`, không bao giờ chặn luồng tạo user.
+  - **Verify Runtime**: Gửi mail thật qua tài khoản Ethereal test:
+    - Message ID: `<4d25c211-9143-90bd-23f6-980799cb7392@menu-go.vn>`
+    - Ethereal Preview URL: `https://ethereal.email/message/ar8WvwLEqXPhYPqWar8WyZ0L.yTp.-akAAAAAen5j2tyRPJrwneZOF9VFBc`
+    - HTML 4,187 chars pass 100% 7 tiêu chí kiểm tra (tên quán, tên nhân viên, vai trò, link đặt mật khẩu, thời hạn 24h, bản dịch EN, thẻ logo).
+    - Kiểm tra fallback khi thiếu SMTP trả về `false` + log `mail skipped`.
+- **Tổng kết Verification**: `npx tsc --noEmit` exit 0; `npm run build` exit 0 sạch sẽ.
+
