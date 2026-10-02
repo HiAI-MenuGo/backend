@@ -317,6 +317,7 @@ model MenuItem {
   recipeItems    Recipe[]
   orderItems     OrderItem[]
 
+  @@unique([tenantId, code])
   @@index([tenantId, categoryId, isActive])
   @@index([tenantId, isSoldOut])
 }
@@ -335,6 +336,7 @@ model ModifierGroup {
   options   ModifierOption[]
   menuItems ItemModifierGroup[]
 
+  @@unique([tenantId, name])
   @@index([tenantId])
 }
 
@@ -354,6 +356,7 @@ model ModifierOption {
   modifierGroup  ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
   orderModifiers OrderItemModifier[]
 
+  @@unique([modifierGroupId, name])
   @@index([tenantId, modifierGroupId])
 }
 
