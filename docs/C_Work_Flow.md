@@ -635,28 +635,38 @@ git push origin feat/be-admin-report-c
 ### 01/10/2026 — Vòng C2: Phủ Toàn Diện Đa Ngôn Ngữ i18n (C-024) + SEO & Performance (C-025)
 - **Nhánh**: `feat/web-frontend-c`
 - **Giai đoạn 1 — Từ điển song song (C-024)**:
-  - Bổ sung và đồng bộ tuyệt đối 1-1 giữa `locales/vi.json` và `locales/en.json` (269 keys song song), mở rộng qua 14 namespaces: `common`, `auth`, `pos`, `kds`, `table`, `cart`, `payment`, `receipt`, `dashboard`, `menu`, `inventory`, `vouchers`, `zReport`, `roles`, `branding`, `bank`, `tables`, `integrations`, `platformAdmin`, `errors`.
+  - Bổ sung và đồng bộ tuyệt đối 1-1 giữa `locales/vi.json` và `locales/en.json`, qua 20 namespaces: `common`, `admin`, `menu`, `cart`, `table`, `kds`, `pos`, `receipt`, `payment`, `dashboard`, `vouchers`, `zReport`, `inventory`, `roles`, `branding`, `bank`, `tables`, `integrations`, `platformAdmin`, `errors`.
   - Nguyên tắc dịch: Lấy string tiếng Việt hiện hữu làm gốc, đối sánh en tương đương, không bịa key.
 - **Giai đoạn 2 — Phủ `t(key, fallback)` & Inline Banner lỗi**:
   - **Public routes**: `table/[tableId]/*` (menu, modal, cart, order-status, payment), `receipt/[sessionId]/*` phủ 100% qua `t(key, 'fallback Việt')`.
   - **Vận hành**: `kds/page.tsx`, `OrderKanbanCard.tsx`, `KdsItemActions.tsx`, `pos/CashierClient.tsx`, `pos/page.tsx`, `ItemOptionsModal.tsx` phủ 100% `t()`, bổ sung `LanguageSwitcher` chuyển đổi linh hoạt.
   - **Admin & Platform Admin**: `dashboard`, `menu`, `inventory`, `vouchers`, `z-report`, `roles`, `settings/branding`, `settings/bank`, `platform-admin`.
   - **Thay thế Alert**: Xóa sổ 100% lệnh `alert(...)` cứng (0 hit), thay bằng inline error banner đỏ `bg-red-500/10 border-red-500/30 text-red-400` theo pattern `actionError`.
-  - **Tổng vị trí gọi `t()`**: Tăng từ ~33 vị trí (15%) lên **462 vị trí** (~98% toàn bộ UI).
+  - **Tổng vị trí gọi `t()`**: Tăng từ ~33 vị trí (15%) lên **463 lượt gọi** rải ở 27 file (388 key duy nhất).
 - **Giai đoạn 3 — SEO & Hiệu năng (C-025)**:
   - Tách Server Component wrapper có `generateMetadata()`:
     - `app/table/[tableId]/page.tsx` + `TableMenuClient.tsx`: Title theo tên quán & slogan thương hiệu.
     - `app/receipt/[sessionId]/page.tsx` + `ReceiptClient.tsx`: Title theo mã hóa đơn điện tử `#sessionId`.
   - Bổ sung skeleton `loading.tsx` pulse chuẩn zinc-950 cho 3 khối lớn: `app/kds/loading.tsx`, `app/pos/loading.tsx`, `app/admin/loading.tsx`.
-  - Tối ưu hình ảnh `<Image>`: 100% ảnh món ăn và logo có `loading="lazy"` cùng `sizes` responsive phù hợp.
-  - **Đo Lighthouse thực tế (Mobile, Chrome Headless tại `/table/01`)**:
+  - Tối ưu hình ảnh `<Image>`: toàn bộ 5 file dùng `next/image` (`MenuItemList`, `TableMenuClient`, `CustomerItemOptionsModal`, `admin/menu`, `admin/settings/bank`) đều có `loading="lazy"` kèm `sizes` responsive phù hợp.
+- **Đo Lighthouse (Mobile, Chrome Headless tại `/table/01`) — đo 1 lần trên máy local, KHÔNG phải cam kết/baseline CI**:
     - **Performance**: 84 / 100
     - **Accessibility**: 98 / 100
     - **Best Practices**: 96 / 100
     - **SEO**: 100 / 100
     - **FCP**: 0.8s | **LCP**: 4.5s (mobile 4x CPU throttle) | **TBT**: 60ms | **CLS**: 0 | **Speed Index**: 1.1s.
+    - Lưu ý: LCP 4.5s là điểm yếu còn tồn tại (ảnh Unsplash tải lần đầu, chưa có placeholder blur); Performance 84 **chưa đạt** ngưỡng mục tiêu >90 của C-025. Cần đo lại trên môi trường staging ổn định sau khi tối ưu LCP mới đưa vào báo cáo chính thức.
   - **Kiểm thử chuyển ngữ EN**: Giao diện tiếng Anh hiển thị ổn định, không tràn chữ, không bể layout trên cả QR Menu và POS.
 - **Verification**: `npx tsc --noEmit` exit 0, `npm run build` thành công sạch sẽ toàn bộ 23 routes Turbopack.
 - **Nợ còn lại (Backlog)**:
-  - Tinh chỉnh LCP cho ảnh món ăn trên mạng di động yếu (có thể thêm placeholder blur SVG).
+  - Tinh chỉnh LCP cho ảnh món ăn trên mạng di động yếu (có thể thêm placeholder blur SVG) để đạt Performance >90.
   - Tự động phát hiện locale qua header `Accept-Language` của trình duyệt thay vì mặc định `vi`.
+### 01/10/2026 — Fix review vòng C2: bổ sung key i18n thiếu (`77d46db`, `fe12320`, `388ced9`)
+- **Vấn đề phát hiện**: Reviewer đếm **388 key duy nhất được gọi trong code** nhưng từ điển chỉ có **269 key** → 119 key thiếu (nhiều nhất ở `pos.*`, `dashboard.*`, `zReport.*`, `vouchers.*`, `roles.*`, `platformAdmin.*`). Hậu quả: bật EN, các màn hình đó rơi về fallback tiếng Việt (layout không vỡ nhưng nội dung chưa dịch).
+- **Cách sửa**: Quét toàn bộ `app/` + `components/` bằng script, lấy đúng fallback tiếng Việt đang có trong code làm giá trị `vi` (không bịa chuỗi mới), bổ sung bản dịch `en` tương đương:
+  - Từ điển tăng từ 269 lên **508 key**, `vi` và `en` song song tuyệt đối (0 key lệch chiều).
+  - **0 key được gọi trong code mà thiếu trong từ điển**; 120 key dư (không dùng) được giữ lại để không phá tương thích.
+- **Sửa kèm**: `admin/settings/bank` thêm `loading="lazy"` cho ảnh QR preview (trước đó là file `next/image` duy nhất còn thiếu), `alt` ảnh này cũng chuyển sang `t()`.
+- **Bổ sung gate CI**: thêm `npm run check:i18n` (`scripts/check-i18n.mjs`) — fail (exit 1) nếu vi/en lệch key, nếu code gọi key thiếu, hoặc nếu giá trị trong `en.json` còn chứa ký tự tiếng Việt. Đã kiểm chứng gate bắt được lỗi bằng cách cố tình xoá key rồi khôi phục.
+- **Sửa nhật ký**: bỏ con số "14 namespaces" (thực tế 20 namespaces, không có `auth`); bỏ claim "100% ảnh có lazy"; ghi rõ số Lighthouse là **kết quả đo một lần trên máy local, không phải cam kết**, và thừa nhận Performance 84 **chưa đạt** ngưỡng >90 của C-025.
+- **Verification**: `npm run check:i18n` exit 0 (`vi=508`, `en=508`, `used=388`, `missing=0`); `npx tsc --noEmit` exit 0; `npm run build` xanh 23 routes.
