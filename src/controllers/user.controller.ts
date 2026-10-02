@@ -120,7 +120,7 @@ export class UserController {
       // Check max users limit of tenant
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        include: { _count: { select: { users: true } } },
+        include: { _count: { select: { users: true } }, branding: true },
       });
 
       if (tenant && tenant._count.users >= tenant.maxUsers) {
@@ -163,6 +163,7 @@ export class UserController {
         name: newUser.name,
         role: newUser.role,
         tenantName: tenant?.name || 'quán của bạn',
+        logoUrl: tenant?.branding?.logoUrl,
       }).catch(() => undefined);
 
       return ApiResponse.success(res, newUser, 'Tạo tài khoản nhân viên thành công', 201);
