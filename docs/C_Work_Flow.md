@@ -759,5 +759,14 @@ git push origin feat/be-admin-report-c
   - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
   - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
 
+### 03/10/2026 — Review Vòng 2 (kết quả + nợ chuyển Vòng 3)
+- **Kết luận review**: Toàn bộ 5 commit Vòng 2 được duyệt, không có sửa code nào bắt buộc. Không có migration mới; không đụng file Team B; transaction, Zod, `ApiResponse`, socket events đều chuẩn. Các số liệu HTTP runtime do agent thực hiện trước review, review độc lập chỉ xác nhận tính khả thi qua mã nguồn.
+- **Nợ chuyển sang Vòng 3** (phát hiện khi review mã, chưa gây lỗi ở Vòng 2):
+  1. **Race sinh `sessionCode`/`orderCode`**: cả hai đang dùng `count(trong ngày) + 1` trong transaction nhưng không có ràng buộc unique và không retry khi đụng unique-violation. Hai request đồng thời cùng chi nhánh có thể sinh mã trùng. → Thêm unique constraint + retry, kèm test đồng thời.
+  2. **Double-count `discountAmount`**: `discountAmount` đang cộng dồn vào `OrderSession` ở mỗi đơn. Nếu voucher là giảm cho toàn session thì từ đơn thứ hai trở đi sẽ bị trừ lặp. → Sửa cùng lúc triển khai validate voucher thật (tính 1 lần ở cấp session).
+  3. **`totalAmount` trong request bị lặng lẽ bỏ qua**: controller vẫn nhận trường này nhưng service chủ động không dùng. Không sai tính tiền, nhưng hợp đồng API gây hiểu lầm. → Xóa khỏi schema Zod hoặc trả 400 khi lệch giá DB.
+  4. **Comment thừa ở frontend `app/kds/page.tsx`**: khối comment cũ vẫn ghi backend dùng `CONFIRMED` cho đang nấu trong khi TODO tương ứng đã bị gỡ ở `0e5e7b7`. → Sửa 1 dòng kèm một việc khác của Vòng 3, không tách commit riêng.
+  5. **Modifier không khớp DB mất liên kết**: đã nêu ở backlog Vòng 2, giữ nguyên để hoàn thiện catalog modifier.
+
 
 
