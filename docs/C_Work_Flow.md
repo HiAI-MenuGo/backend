@@ -913,3 +913,40 @@ git push origin feat/be-admin-report-c
 - **Đã sửa khi review**: `hourlyTrend` tính `session.orders?.length || 1` làm session 0 món bị đếm thành 1 đơn, lệch KPI `orders.count` → đổi thành `?? 0` (`analytics.service.ts`), verify lại `tsc` + `build` exit 0.
 - **Nợ chuyển Vòng 6**: (1) doanh thu lọc theo `openedAt` thay vì `closedAt/paidAt`, session vắt nửa đêm lệch ngày; (2) `topItems` chưa loại `OrderItem CANCELLED` lẻ; (3) docs diễn đạt "groupBy" trong khi code group in-memory (kết quả tương đương).
 
+### 03/10/2026 — Vòng 6 Dọn nợ analytics/order (Commits Backend `5b8441b` | Frontend `20c62a7`)
+- **Mục tiêu hoàn thành**: Dọn sạch 5 nợ kỹ thuật nhỏ được phát hiện khi review Vòng 4 và Vòng 5 về mốc thời gian analytics, điều kiện lọc top món, liên kết ảnh món ăn trên KDS, tìm kiếm đơn hàng theo mã bàn, và prop chết trên frontend. Không thêm tính năng mới, không thay đổi hành vi nghiệp vụ lớn.
+- **Việc B1 — Doanh thu và xu hướng theo ngày đóng/chốt (vai A, backend `5b8441b`)**:
+  - `backend/src/services/analytics.service.ts`:
+    - **Quy ước tính toán ngày**:
+      1. Doanh thu (`revenue.today` / `revenue.yesterday`) và biểu đồ giờ (`hourlyTrend`) tính theo thời điểm đóng ca/chốt đơn `closedAt` (với fallback `openedAt` khi `closedAt` null: điều kiện `OR [{ closedAt: trong ngày }, { closedAt: null AND openedAt: trong ngày }]`). Một bàn mở lúc 15:00 hôm qua nhưng 10:30 sáng nay mới thanh toán đóng bàn thì toàn bộ doanh thu được ghi nhận đúng vào ngày hôm nay.
+      2. Tỷ lệ thanh toán VietQR (`paidTransactions`) tính theo thời điểm thanh toán thực tế `paidAt` (fallback `createdAt` khi `paidAt` null).
+      3. Số lượng đơn (`orders.count`) và top món (`topItems`) tính theo ngày đặt món `createdAt` (phản ánh đúng số lượng đơn và món phát sinh trong ngày làm việc của bếp).
+- **Việc B2 — Loại bỏ món hủy lẻ khỏi Top Món (vai A, backend `5b8441b`)**:
+  - `backend/src/services/analytics.service.ts`: Bổ sung điều kiện `status: { not: 'CANCELLED' }` trực tiếp ở cấp `OrderItem` trong truy vấn `topItems`, ngăn chặn trường hợp món bị khách hoặc bếp hủy lẻ nhưng vẫn lọt vào danh sách món bán chạy nhất ngày.
+- **Việc B3 — Gắn imageUrl thật cho OrderItem (vai A, backend `5b8441b`)**:
+  - `backend/src/services/order.service.ts`:
+    - Bổ sung `menuItem: { select: { imageUrl: true } }` tại 5 vị trí include items (`getActiveOrders`, `getOrderById`, `updateOrderStatus`, `updateItemStatus`, `voidOrder`, `getOrderHistory`).
+    - Cập nhật adapter `mapPrismaOrderToLiveOrder` gán `imageUrl: item.menuItem?.imageUrl || undefined`.
+    - Màn hình bếp KDS và card đơn hàng nhận được URL ảnh món thực tế từ CSDL.
+- **Việc B4 — Tìm kiếm lịch sử đơn mở rộng theo mã bàn (vai A, backend `5b8441b`)**:
+  - `backend/src/services/order.service.ts`: Trong method `getOrderHistory`, mở rộng điều kiện `search` sang tìm kiếm cả theo mã bàn: `where.OR = [{ orderCode: { contains: q, mode: 'insensitive' } }, { session: { table: { code: { contains: q, mode: 'insensitive' } } } }]`. Tìm kiếm theo mã bàn (ví dụ: `Bàn 02`) trả về chính xác tất cả đơn đã phục vụ tại bàn đó.
+- **Việc C1 — Xóa prop chết branchId trong CartDrawer (vai C, frontend `20c62a7`)**:
+  - `frontend/app/table/[tableId]/CartDrawer.tsx`: Loại bỏ hoàn toàn `branchId?: string` khỏi `interface CartDrawerProps` và danh sách tham số khởi tạo `CartDrawer`. Giữ nguyên `tenantId` phục vụ kiểm tra voucher (`/vouchers/apply`).
+  - Quét grep `branchId` trong `CartDrawer.tsx` trả về đúng 0 kết quả.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; `npx prisma migrate status` 6 migrations up-to-date (không phát sinh migration mới).
+  - Test suite runtime (`test_vong6.ts`):
+    1. Session mở 15:00 hôm qua, đóng 10:30 hôm nay $\rightarrow$ Doanh thu 250.000đ được ghi nhận đúng vào ngày hôm nay; ngày hôm qua không bị tính lặp; slot 10:00 ghi nhận 250.000đ.
+    2. Item có số lượng 99 nhưng trạng thái `CANCELLED` lẻ $\rightarrow$ hoàn toàn không xuất hiện trong `topItems`.
+    3. DTO `LiveOrder` từ `getOrderById` trả về `imageUrl` khớp 100% với `MenuItem.imageUrl` từ CSDL.
+    4. Tìm kiếm lịch sử đơn hàng với từ khóa mã bàn `Bàn 02` $\rightarrow$ trả về chính xác 3 đơn của bàn.
+  - `frontend`: `npm run check:i18n` 394/394 keys khớp tuyệt đối; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  1. Cashier & Payment tại bàn/quầy vẫn đang chạy mock trong `cashier.controller.ts` (Team B phụ trách thanh toán đóng session).
+  2. Cascade item $\rightarrow$ order status `DONE` khi toàn bộ món trong đơn đã xong (giữ độc lập để tránh thay đổi luồng KDS).
+  3. Method `createOrder` (POST `/orders/`) trong `order.service.ts` vẫn là mock in-memory cũ (không còn frontend nào gọi).
+  4. Trừ kho BOM tự động khi hoàn tất đơn hàng/thanh toán.
+  5. Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+  6. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
+
+
