@@ -768,5 +768,39 @@ git push origin feat/be-admin-report-c
   4. **Comment thừa ở frontend `app/kds/page.tsx`**: khối comment cũ vẫn ghi backend dùng `CONFIRMED` cho đang nấu trong khi TODO tương ứng đã bị gỡ ở `0e5e7b7`. → Sửa 1 dòng kèm một việc khác của Vòng 3, không tách commit riêng.
   5. **Modifier không khớp DB mất liên kết**: đã nêu ở backlog Vòng 2, giữ nguyên để hoàn thiện catalog modifier.
 
+### 03/10/2026 — Vòng 3 Harden session-order (Commits Backend `6607de8`, `ae364fc`, `53709a2` | Frontend `0e38786`)
+- **Việc H1 — Chống trùng sessionCode/orderCode (vai A, backend `feat/be-admin-report-c` → `ae364fc`)**:
+  - `backend/prisma/schema.prisma`: Thêm ràng buộc `@@unique([branchId, sessionCode])` cho `OrderSession` và `@@unique([branchId, orderCode])` cho `Order`.
+  - Migration `20261003142000_unique_session_and_order_codes`: Chạy kiểm tra dữ liệu trước khi migrate (0 duplicate). Triển khai `npx prisma migrate deploy` thành công sạch sẽ.
+  - `backend/src/services/session-order.service.ts`:
+    - Truy vấn sinh mã bổ sung `tenantId` (scope `tenantId` + `branchId` + ngày hiện tại).
+    - Tra cứu sequence lớn nhất trong ngày (`findFirst` desc) để cấp phát mã kế tiếp chính xác.
+    - Áp dụng row-lock `SELECT ... FOR UPDATE` trên bản ghi `Table` trong transaction để tuần tự hóa các request đồng thời trên cùng bàn.
+    - Bọc transaction trong cơ chế retry tối đa 3 lần với jitter backoff (10ms - 50ms) khi gặp mã lỗi `P2002`; nếu quá 3 lần vẫn xung đột thì trả về HTTP 500 `ORDER_CODE_CONFLICT` (không đổ lỗi 400 cho client).
+  - **Verify Runtime**: Test 10 request gửi song song đồng thời trên cùng bàn `EMPTY`: 10/10 request thành công HTTP 201, tạo đúng duy nhất 1 `OrderSession` OPEN, 10 `orderCode` hoàn toàn phân biệt không trùng lặp, bàn chuyển `OCCUPIED`.
+- **Việc H2 — Discount tính đúng 1 lần + validate voucher thật (vai A, backend `feat/be-admin-report-c` → `6607de8`, `ae364fc`)**:
+  - Tạo mới `backend/src/services/voucher-quote.service.ts`: Hàm pure `validateVoucherForOrder(tenantId, code, subTotal)` tính toán giảm giá thuần từ database (kiểm tra `isActive`, khoảng ngày hiệu lực, `usageLimit`, `minOrderVal`, tính `PERCENT`/`FIXED` có cap `maxDiscount`).
+  - `backend/src/controllers/voucher.controller.ts`: Refactor `applyVoucher` ủy quyền cho `VoucherQuoteService`, giữ nguyên 100% API contract và hành vi hiện hành.
+  - `backend/src/services/session-order.service.ts`:
+    - Hoàn toàn không tin `discountAmount` client gửi; mọi con số giảm giá đều do `VoucherQuoteService` tính từ DB.
+    - Áp dụng luật session: Voucher chỉ tính giảm giá khi `session.discountAmount === 0` (đơn đầu tiên có voucher). Các đơn sau trên cùng session áp dụng `discount = 0` cho phần cộng dồn session để không bị trừ lặp, đồng thời `order.totalAmount` của mỗi đơn vẫn được bảo toàn đúng giá trị.
+    - Nếu voucher không hợp lệ hoặc hết hạn: ghi log cảnh báo, không chặn đơn mà tạo đơn bình thường với discount = 0.
+  - **Verify Runtime**:
+    - Đơn 1 gửi kèm `CHAO2026` (20%): SubTotal 105.000đ, Giảm giá 21.000đ, Final 84.000đ.
+    - Đơn 2 trên cùng session: SubTotal đơn 45.000đ, Total đơn 45.000đ (không giảm lặp), SubTotal session tăng lên 150.000đ, Giảm giá session giữ nguyên 21.000đ, Final session 129.000đ.
+    - Gửi voucher hết hạn / không tồn tại: Đơn tạo thành công HTTP 201, discount = 0.
+- **Việc H3 — Dọn hợp đồng API (vai A + C, backend `53709a2` | frontend `0e38786`)**:
+  - `backend/src/controllers/session-order.controller.ts`: Xóa 5 trường dư thừa khỏi Zod validation schema: `branchId`, `tenantId`, `totalAmount` ở body level, và `name`, `price` ở item level. Zod tự động strip các trường thừa client gửi.
+  - `frontend/app/table/[tableId]/CartDrawer.tsx`: Ngừng gửi 5 trường thừa (`branchId`, `tenantId`, `name`, `price`, `totalAmount`) trong payload, giữ lại đúng `tableId`, `items` (`menuItemId`, `quantity`, `note`, `modifiers`), `voucherCode`, `discountAmount`.
+  - `frontend/app/kds/page.tsx`: Cập nhật comment giải thích hàm `normalizeOrderStatus` để phản ánh đúng mục đích tương thích ngược với dữ liệu đơn cũ trước Vòng 1.
+  - **Verify Runtime**:
+    - Backend: Gửi payload giả mạo `totalAmount: 1`, `price: 1` -> bị strip hoàn toàn, DB tính đúng giá món từ database; `npx tsc --noEmit` exit 0, `npm run build` exit 0.
+    - Frontend: `npx tsc --noEmit` exit 0; `npm run check:i18n` exit 0 (388/388 keys); `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  - **Blocker DONE vs SERVED**: Giữ nguyên ranh giới quyết định của user, route `session-order` mới chỉ tạo đơn với Prisma enum `PENDING`. Khớp enum `DONE` vs `SERVED` ở item-level cho `order.service` mock vẫn được bảo lưu cho Vòng sau.
+  - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
+  - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+
+
 
 
