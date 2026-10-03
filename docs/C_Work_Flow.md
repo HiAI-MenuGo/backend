@@ -859,7 +859,52 @@ git push origin feat/be-admin-report-c
     7. Bảo mật chi nhánh: `GET /api/orders/active?branchId=non-existent-branch-id` → HTTP 404 `BRANCH_NOT_FOUND`.
   - `frontend`: `npm run check:i18n` 388/388 keys khớp 1-1; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
 - **Nợ kỹ thuật còn lại (Backlog)**:
-  - Cashier / Payment vẫn đang chạy mock trong `cashier.controller.ts` (thuộc Team B / Vòng 5 triển khai thanh toán đóng session).
+  - Cashier / Payment vẫn đang chạy mock trong `cashier.controller.ts` (thuộc Team B / Vòng 6 triển khai thanh toán đóng session).
   - Method `createOrder` (POST `/orders/`) trong `order.service.ts` vẫn là in-memory mock (đã ghi nợ, không còn frontend nào gọi).
   - Item image: `OrderItem.imageUrl` đang trả `undefined` (ghi nợ join `MenuItem` nếu KDS cần thumbnail).
   - Tìm kiếm history theo `tableName` / `customerName` tạm thời thu hẹp về `orderCode`.
+
+### 03/10/2026 — Vòng 5 Dashboard analytics thật (Commits Backend `20e6454` | Frontend `ccb3dbb`)
+- **Mục tiêu hoàn thành**: Xóa bỏ 100% số liệu và biểu đồ mock tĩnh trên trang quản trị Dashboard (`/admin/dashboard/`), thay thế bằng dữ liệu analytics thật truy vấn trực tiếp từ PostgreSQL qua Prisma Client. Giao diện quản trị phản ánh chính xác hoạt động kinh doanh của quán theo thời gian thực.
+- **Việc A1 — Endpoint GET /api/analytics/overview (vai A, backend `20e6454`)**:
+  - Tạo mới `backend/src/services/analytics.service.ts`, `backend/src/controllers/analytics.controller.ts`, và `backend/src/routes/analytics.routes.ts`, mount vào root router tại `/api/analytics`.
+  - Bảo vệ bằng middleware: `authMiddleware` + `requireRole(['ADMIN', 'MANAGER', 'CASHIER'])` (giống chuẩn `zreport.routes.ts`).
+  - Request query: `?branchId=&date=YYYY-MM-DD` (mặc định lấy ngày hiện tại).
+  - **Công thức tính toán từng chỉ số KPI**:
+    1. **Doanh thu hôm nay (`revenue.today`)**: Tổng `finalAmount` của tất cả `OrderSession` có `status = 'CLOSED'` và `openedAt` trong khoảng ngày được truy vấn (`startOfDay` đến `endOfDay`).
+    2. **Tăng trưởng so với hôm qua (`revenue.growthPercent`)**: Tính phần trăm tăng/giảm so với tổng `finalAmount` của các session `CLOSED` ngày hôm trước (`revenueYesterday`). Guard chia cho 0 an toàn: nếu hôm trước bằng 0 và hôm nay có doanh thu $\rightarrow$ `+100%`, nếu cả hai đều bằng 0 $\rightarrow$ `0%`.
+    3. **Số lượng hóa đơn (`orders.count`)**: Đếm tổng số `Order` (không bị `CANCELLED`) thuộc chi nhánh trong ngày.
+    4. **Giá trị trung bình đơn (`orders.avgOrderValue`)**: `revenueToday / orders.count` (nếu `count = 0` $\rightarrow$ trả `0đ`).
+    5. **Tỷ lệ thanh toán VietQR (`vietqr.sharePercent`)**: Tính tỷ lệ phần trăm số tiền của các `PaymentTransaction` trạng thái `PAID` có `method = 'VIETQR'` trên tổng tiền các giao dịch `PAID` trong ngày. Kèm trường `totalAmount` lưu tổng tiền chuyển khoản QR.
+    6. **Bàn đang mở (`tables.occupied / tables.total`)**: Đếm số bản ghi `Table` có `status = 'OCCUPIED'` trên tổng số bàn `isActive = true` của chi nhánh.
+    7. **Món đang chờ bếp nấu (`tables.pendingKitchen`)**: Đếm số `OrderItem` có trạng thái `PENDING` hoặc `PREPARING` thuộc các đơn chưa `DONE`/`CANCELLED`.
+    8. **Xu hướng doanh thu 8 khung giờ (`hourlyTrend`)**: 8 điểm mốc giờ cố định (`08:00`, `10:00`, `12:00`, `14:00`, `16:00`, `18:00`, `20:00`, `22:00`) tổng hợp từ `finalAmount` và số đơn của các session `CLOSED` theo giờ `openedAt`.
+    9. **Top 5 món bán chạy (`topItems`)**: `groupBy` `menuItemId` trên bảng `OrderItem` (thuộc order không `CANCELLED` trong ngày), tính tổng `quantity` và `totalPrice`, join sang `MenuItem` và `MenuCategory` để lấy tên món và danh mục.
+  - **Luật bảo mật Tenant / Branch Isolation**:
+    - Phân giải `tenantId` từ chi nhánh; đối chiếu với `req.user.tenantId` để chặn IDOR; branch không tồn tại trả HTTP 404 `BRANCH_NOT_FOUND`.
+    - Truy cập không có token trả HTTP 401 `UNAUTHORIZED`; role không phù hợp (ví dụ `KITCHEN`) trả HTTP 403 `FORBIDDEN`.
+- **Việc C1 & C2 — Dashboard ăn API thật & Xóa sạch Mock (vai C, frontend `ccb3dbb`)**:
+  - `frontend/app/admin/dashboard/page.tsx`:
+    - Chuyển sang gọi `apiFetch<AnalyticsOverviewData>('/analytics/overview')` tự động truyền `branchId` của người dùng đăng nhập.
+    - Xây dựng trạng thái Loading Skeleton cho 4 card KPI, biểu đồ và danh sách top món.
+    - Xây dựng Error State có nút "Thử lại" khi gặp sự cố mạng hoặc lỗi máy chủ.
+    - **Quyết định Empty State hiện 0**: Khi quán chưa có giao dịch nào trong ngày (`isAllZero`), hiển thị đúng số thực tế (`0đ`, `0 đơn`, `0%`, `0 / N bàn`), hiển thị banner thông báo "Chưa có dữ liệu giao dịch cho ngày hôm nay" và empty state cho danh sách món. Tuyệt đối không bịa số giả thay thế.
+  - `frontend/components/dashboard/RevenueTrendChart.tsx`:
+    - Chuyển sang nhận dữ liệu `data?: HourlyTrendPoint[]` qua props; xóa bỏ hoàn toàn mảng `const data` mock cứng bên trong file.
+  - **Xóa sạch mock (C2)**:
+    - Quét grep `14.020.000`, `266 đơn`, `68.4%`, `topSellingItems` trong `app/admin/dashboard/` và `components/dashboard/` $\rightarrow$ kết quả về đúng 0.
+  - **Hệ thống đa ngôn ngữ i18n**:
+    - Chuẩn hóa các key `dashboard.*` trong `vi.json` và `en.json`, bổ sung các key đơn vị (`unitOrder`, `unitPortion`, `unitTable`, `emptyData`, `noTopItems`, `errorLoading`).
+    - Số lượng key từ điển tăng song song từ 388 lên **394 key**, 100% khớp song song 1-1, kiểm tra `npm run check:i18n` đạt tuyệt đối.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0.
+  - Test suite runtime (`test_vong5.ts`):
+    - GET không token $\rightarrow$ HTTP 401 `UNAUTHORIZED`.
+    - GET token `KITCHEN` $\rightarrow$ HTTP 403 `FORBIDDEN`.
+    - GET `branchId=unknown` $\rightarrow$ HTTP 404 `BRANCH_NOT_FOUND`.
+    - Seed 1 session CLOSED (180.000đ, 4 ly Trà Đào Cam Sả, giao dịch VietQR PAID lúc 14:15) $\rightarrow$ GET overview trả KPI khớp 100% với database: Doanh thu 180.000đ, VietQR 100% (180.000đ), Slot 14:00 ghi nhận 180.000đ, Top món hiển thị 'Trà Đào Cam Sả' 4 phần (180.000đ).
+    - Branch trống $\rightarrow$ HTTP 200, toàn bộ KPI trả về 0 sạch sẽ, topItems mảng rỗng `[]`.
+  - `frontend`: `npm run check:i18n` đạt 394/394 keys; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  - Dashboard analytics tính doanh thu phụ thuộc vào các session `CLOSED` và transaction `PAID`, hiện tại luồng thanh toán tại bàn và quầy thu ngân vẫn đang mock (`cashier.controller.ts`), sẽ chuyển sang thanh toán/đóng session thật ở Vòng sau.
+
