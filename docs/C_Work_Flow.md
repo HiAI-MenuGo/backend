@@ -1003,7 +1003,7 @@ git push origin feat/be-admin-report-c
     - `orderStatus = 'DONE'` khi và chỉ khi `allFinished && hasDone && order.status !== 'CANCELLED'`.
     - Bảo toàn trạng thái đơn đã hủy (`CANCELLED`), không còn bị gán đè thành `DONE` khi thao tác trên item; trường hợp `[DONE, CANCELLED]` client hiển thị ngay sang `DONE` đồng nhất với server.
 - **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
-  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; grep `createOrder` trong `src/` về 0 (chỉ còn lại tại `session-order.controller.ts` và `session.routes.ts`).
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; grep `createOrder` trong `src/` về 0 tại `order.controller/service/routes` (còn đúng 2 hit tại `session-order.*` là route thật Vòng 2).
   - Test suite runtime (`test_vong8.ts`):
     1. `POST /api/orders` trả về HTTP 404 Not Found đúng định tuyến.
     2. `POST /api/sessions/:tableId/order` hoạt động chuẩn xác (Zod validation 400 khi thiếu body).
