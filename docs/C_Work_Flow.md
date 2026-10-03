@@ -706,7 +706,9 @@ git push origin feat/be-admin-report-c
 ### 03/10/2026 — Vòng 1 Quick wins A+C (Commits Backend `856536f`, `a378971` | Frontend `4e63940`, `84ec9d4`)
 - **Việc A1 — Mở PREPARING/READY (vai A, backend `feat/be-admin-report-c` → `856536f`)**:
   - `backend/src/services/order.service.ts`: Mở rộng type `LiveOrderStatus` và `OrderItemDetail.status` hỗ trợ đầy đủ lifecycle theo BUSINESS.md §3 và OrderStatus enum: `'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DONE' | 'CANCELLED'`.
-  - `backend/src/controllers/order.controller.ts`: Cho phép validator `updateStatus` chấp nhận `PREPARING` và `READY`. Đồng thời validator `updateItemStatus` chuẩn hóa tập trạng thái `['PENDING', 'PREPARING', 'READY', 'SERVED', 'DONE', 'CANCELLED']` (thay vì string tự do), đảm bảo an toàn kiểu dữ liệu.
+  - `backend/src/controllers/order.controller.ts`: Cho phép validator `updateStatus` chấp nhận `PREPARING` và `READY`. Đồng thời validator `updateItemStatus` chuyển từ string tự do sang whitelist `['PENDING', 'PREPARING', 'READY', 'SERVED', 'DONE', 'CANCELLED']`.
+  - **Không có migration mới**: `OrderStatus`/`OrderItemStatus` đã có đủ giá trị từ migration `20261001044147_init_multi_tenant`.
+  - **Nợ kỹ thuật chưa giải quyết (biết rõ, cố ý giữ, xem mục Backlog)**: `DONE` ở **item-level** là hợp lệ với frontend KDS hiện tại (`KdsItemActions`, `OrderKanbanCard`, `app/kds/page.tsx`, `app/table/[tableId]/order-status`) nhưng **không có trong Prisma enum `OrderItemStatus`** (`PENDING, PREPARING, READY, SERVED, CANCELLED`). Service hiện là in-memory nên chưa vỡ; **phải khớp enum trước khi Vòng 2 chuyển `order.service` sang Prisma**.
   - **Verify Runtime**: `PATCH /orders/:id/status` với `PREPARING` và `READY` trả HTTP 200 thành công; gửi mã lạ trả HTTP 400 `INVALID_STATUS`; `npx tsc --noEmit` exit 0.
 - **Việc C1 — order.note đa dòng (vai C, frontend `feat/web-frontend-c` → `4e63940`)**:
   - `frontend/components/kds/OrderKanbanCard.tsx`: Tái sử dụng component `NoteLinesDark` từ `frontend/lib/format-note.tsx` để render `order.note` đa dòng bullet thay vì hiển thị 1 dòng liền mạch (RULES §5A / SKILLS §6A).
@@ -723,6 +725,7 @@ git push origin feat/be-admin-report-c
   - Không giữ lại key thừa nào do toàn bộ 388 key hiện tại đã bao phủ 100% các màn hình đang hoạt động; các tính năng tương lai sẽ bổ sung key theo luồng feature mới.
   - **Verify Runtime**: `npm run check:i18n` exit 0 (`vi keys: 388 | en keys: 388 | keys được gọi: 388 | OK: song song tuyệt đối`); `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
 - **Nợ còn lại (Backlog)**:
+  - **Blocker Vòng 2 — phải khớp enum item-level**: chuẩn hóa `DONE` vs `SERVED` cho `OrderItemStatus` giữa backend và frontend KDS (xem giải thích ở mục A1). Chốt theo hướng ít hồi quy nhất trước khi `order.service` ghi xuống Prisma.
   - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
   - Team A: Shared API route alias `POST /sessions/:tableId/order`.
   - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
