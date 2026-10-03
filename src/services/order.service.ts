@@ -333,6 +333,37 @@ export class OrderService {
       logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
     }
 
+    // Cascade: Auto-DONE order khi mon xong het (>= 1 DONE, tat ca thuoc DONE hoac CANCELLED)
+    if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
+      const orderItems = await prisma.orderItem.findMany({
+        where: { orderId: order.id },
+        select: { status: true },
+      });
+
+      const allFinished =
+        orderItems.length > 0 &&
+        orderItems.every((it) => it.status === 'DONE' || it.status === 'CANCELLED');
+      const hasDone = orderItems.some((it) => it.status === 'DONE');
+
+      if (allFinished && hasDone) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'DONE' },
+        });
+
+        try {
+          emitToBranch(branch.id, SOCKET_EVENTS.ORDER_UPDATED, {
+            orderId: order.id,
+            status: 'DONE',
+            updatedAt: new Date().toISOString(),
+            branchId: branch.id,
+          });
+        } catch (socketErr: any) {
+          logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
+        }
+      }
+    }
+
     return {
       id: updatedItem.id,
       name: updatedItem.itemName,
