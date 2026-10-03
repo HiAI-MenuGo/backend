@@ -539,42 +539,4 @@ export class OrderService {
       totalPages,
     };
   }
-
-  /**
-   * Giữ nguyên method createOrder mock không đụng tới (tránh regression).
-   */
-  static createOrder(
-    data: Omit<LiveOrder, 'id' | 'code' | 'time' | 'status' | 'createdAt'>,
-    branchId: string = 'default-branch'
-  ): LiveOrder {
-    const newCode = `#${100 + Date.now() % 1000}`;
-    const newOrder: LiveOrder = {
-      ...data,
-      id: `ord-${Date.now()}`,
-      code: newCode,
-      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      status: 'PENDING',
-      branchId: branchId || data.branchId || 'default-branch',
-      tenantId: data.tenantId || 'default-tenant',
-      createdAt: new Date().toISOString(),
-      countdownSeconds: 600,
-    };
-
-    try {
-      emitToBranch(newOrder.branchId, SOCKET_EVENTS.ORDER_NEW, {
-        orderId: newOrder.id,
-        orderNumber: newOrder.code,
-        tableId: newOrder.tableId,
-        tableName: newOrder.tableName,
-        totalAmount: newOrder.total,
-        itemCount: newOrder.items.reduce((s, i) => s + i.quantity, 0),
-        items: newOrder.items,
-        createdAt: newOrder.createdAt,
-      });
-    } catch (e: any) {
-      logger.warn(`[OrderService] createOrder mock socket emission error: ${e.message}`);
-    }
-
-    return newOrder;
-  }
 }

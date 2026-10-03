@@ -5,7 +5,6 @@ const orderRouter = Router();
 
 orderRouter.get('/active', OrderController.getActiveOrders);
 orderRouter.get('/history', OrderController.getHistory);
-orderRouter.post('/', OrderController.createOrder);
 orderRouter.patch('/:id/status', OrderController.updateStatus);
 orderRouter.patch('/items/:id/status', OrderController.updateItemStatus);
 orderRouter.post('/:id/void', OrderController.voidOrder);

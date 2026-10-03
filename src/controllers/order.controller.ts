@@ -109,14 +109,4 @@ export class OrderController {
       return ApiResponse.error(res, 'FETCH_HISTORY_ERROR', err.message, 500);
     }
   }
-
-  static createOrder(req: Request, res: Response) {
-    try {
-      const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
-      const order = OrderService.createOrder(req.body, branchId);
-      return ApiResponse.success(res, order, 'Tạo đơn hàng thành công', 201);
-    } catch (err: any) {
-      return ApiResponse.error(res, 'CREATE_ORDER_ERROR', err.message, 400);
-    }
-  }
 }
