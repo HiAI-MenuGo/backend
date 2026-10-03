@@ -121,14 +121,17 @@ export class AnalyticsService {
     const startOfYesterday = new Date(y, m - 1, d - 1, 0, 0, 0, 0);
     const endOfYesterday = new Date(y, m - 1, d - 1, 23, 59, 59, 999);
 
-    // 1. Doanh thu từ OrderSession CLOSED hôm nay và hôm qua
+    // 1. Doanh thu từ OrderSession CLOSED hôm nay và hôm qua (lọc theo closedAt, fallback openedAt)
     const [closedSessionsToday, closedSessionsYesterday] = await Promise.all([
       prisma.orderSession.findMany({
         where: {
           tenantId: branch.tenantId,
           branchId: branch.id,
           status: 'CLOSED',
-          openedAt: { gte: startOfDay, lte: endOfDay },
+          OR: [
+            { closedAt: { gte: startOfDay, lte: endOfDay } },
+            { closedAt: null, openedAt: { gte: startOfDay, lte: endOfDay } },
+          ],
         },
         include: {
           orders: true,
@@ -139,7 +142,10 @@ export class AnalyticsService {
           tenantId: branch.tenantId,
           branchId: branch.id,
           status: 'CLOSED',
-          openedAt: { gte: startOfYesterday, lte: endOfYesterday },
+          OR: [
+            { closedAt: { gte: startOfYesterday, lte: endOfYesterday } },
+            { closedAt: null, openedAt: { gte: startOfYesterday, lte: endOfYesterday } },
+          ],
         },
         select: {
           finalAmount: true,
@@ -157,7 +163,7 @@ export class AnalyticsService {
       revenueGrowth = 100;
     }
 
-    // 2. Số lượng hóa đơn (Order không bị CANCELLED trong ngày)
+    // 2. Số lượng hóa đơn (Order không bị CANCELLED trong ngày theo createdAt)
     const orderCount = await prisma.order.count({
       where: {
         tenantId: branch.tenantId,
@@ -169,7 +175,7 @@ export class AnalyticsService {
 
     const avgOrderValue = orderCount > 0 ? Math.round(revenueToday / orderCount) : 0;
 
-    // 3. Tỷ lệ thanh toán VietQR trên các PaymentTransaction PAID
+    // 3. Tỷ lệ thanh toán VietQR trên các PaymentTransaction PAID (lọc theo paidAt, fallback createdAt)
     const paidTransactions = await prisma.paymentTransaction.findMany({
       where: {
         status: 'PAID',
@@ -177,7 +183,10 @@ export class AnalyticsService {
           tenantId: branch.tenantId,
           branchId: branch.id,
         },
-        createdAt: { gte: startOfDay, lte: endOfDay },
+        OR: [
+          { paidAt: { gte: startOfDay, lte: endOfDay } },
+          { paidAt: null, createdAt: { gte: startOfDay, lte: endOfDay } },
+        ],
       },
       select: {
         amount: true,
@@ -222,7 +231,7 @@ export class AnalyticsService {
       },
     });
 
-    // 6. Xu hướng doanh thu 8 khung giờ (08, 10, 12, 14, 16, 18, 20, 22h)
+    // 6. Xu hướng doanh thu 8 khung giờ (08, 10, 12, 14, 16, 18, 20, 22h theo closedAt fallback openedAt)
     const hourlyTrend: HourlyTrendPoint[] = [
       { time: '08:00', revenue: 0, orders: 0 },
       { time: '10:00', revenue: 0, orders: 0 },
@@ -235,15 +244,17 @@ export class AnalyticsService {
     ];
 
     for (const session of closedSessionsToday) {
-      const h = new Date(session.openedAt).getHours();
+      const timestamp = session.closedAt || session.openedAt;
+      const h = new Date(timestamp).getHours();
       const idx = getHourlySlotIndex(h);
       hourlyTrend[idx].revenue += session.finalAmount;
       hourlyTrend[idx].orders += session.orders?.length ?? 0;
     }
 
-    // 7. Top 5 món bán chạy nhất trong ngày (chỉ tính món từ order không CANCELLED)
+    // 7. Top 5 món bán chạy nhất trong ngày (loại cả order CANCELLED và OrderItem CANCELLED lẻ)
     const orderItems = await prisma.orderItem.findMany({
       where: {
+        status: { not: 'CANCELLED' },
         order: {
           tenantId: branch.tenantId,
           branchId: branch.id,

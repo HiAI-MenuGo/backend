@@ -97,7 +97,7 @@ function mapPrismaOrderToLiveOrder(order: any): LiveOrder {
       quantity: item.quantity,
       price: item.unitPrice,
       note,
-      imageUrl: undefined, // Ghi nợ: join MenuItem.imageUrl nếu cần
+      imageUrl: item.menuItem?.imageUrl || undefined,
       status: item.status,
     };
   });
@@ -143,6 +143,11 @@ export class OrderService {
         items: {
           include: {
             modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
           },
         },
         session: {
@@ -177,6 +182,11 @@ export class OrderService {
         items: {
           include: {
             modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
           },
         },
         session: {
@@ -233,6 +243,11 @@ export class OrderService {
         items: {
           include: {
             modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
           },
         },
         session: {
@@ -299,6 +314,11 @@ export class OrderService {
       },
       include: {
         modifiers: true,
+        menuItem: {
+          select: {
+            imageUrl: true,
+          },
+        },
       },
     });
 
@@ -319,6 +339,7 @@ export class OrderService {
       quantity: updatedItem.quantity,
       price: updatedItem.unitPrice,
       note: updatedItem.note || undefined,
+      imageUrl: (updatedItem as any).menuItem?.imageUrl || undefined,
       status: updatedItem.status as any,
     };
   }
@@ -360,6 +381,11 @@ export class OrderService {
         items: {
           include: {
             modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
           },
         },
         session: {
@@ -407,10 +433,25 @@ export class OrderService {
     };
 
     if (search && search.trim()) {
-      where.orderCode = {
-        contains: search.trim(),
-        mode: 'insensitive',
-      };
+      const q = search.trim();
+      where.OR = [
+        {
+          orderCode: {
+            contains: q,
+            mode: 'insensitive',
+          },
+        },
+        {
+          session: {
+            table: {
+              code: {
+                contains: q,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      ];
     }
 
     if (startDate || endDate) {
@@ -435,6 +476,11 @@ export class OrderService {
           items: {
             include: {
               modifiers: true,
+              menuItem: {
+                select: {
+                  imageUrl: true,
+                },
+              },
             },
           },
           session: {
