@@ -908,3 +908,8 @@ git push origin feat/be-admin-report-c
 - **Nợ kỹ thuật còn lại (Backlog)**:
   - Dashboard analytics tính doanh thu phụ thuộc vào các session `CLOSED` và transaction `PAID`, hiện tại luồng thanh toán tại bàn và quầy thu ngân vẫn đang mock (`cashier.controller.ts`), sẽ chuyển sang thanh toán/đóng session thật ở Vòng sau.
 
+### 03/10/2026 — Review Vòng 5 (kết quả + nợ chuyển Vòng 6)
+- **Kết luận review**: 4 commit Vòng 5 được duyệt. Guard auth/role, chống IDOR qua `req.user.tenantId`, 9 công thức KPI và empty-state-hiện-0 đều đúng code. Không migration mới, không đụng Team B/zreport.
+- **Đã sửa khi review**: `hourlyTrend` tính `session.orders?.length || 1` làm session 0 món bị đếm thành 1 đơn, lệch KPI `orders.count` → đổi thành `?? 0` (`analytics.service.ts`), verify lại `tsc` + `build` exit 0.
+- **Nợ chuyển Vòng 6**: (1) doanh thu lọc theo `openedAt` thay vì `closedAt/paidAt`, session vắt nửa đêm lệch ngày; (2) `topItems` chưa loại `OrderItem CANCELLED` lẻ; (3) docs diễn đạt "groupBy" trong khi code group in-memory (kết quả tương đương).
+

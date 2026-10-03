@@ -238,7 +238,7 @@ export class AnalyticsService {
       const h = new Date(session.openedAt).getHours();
       const idx = getHourlySlotIndex(h);
       hourlyTrend[idx].revenue += session.finalAmount;
-      hourlyTrend[idx].orders += session.orders?.length || 1;
+      hourlyTrend[idx].orders += session.orders?.length ?? 0;
     }
 
     // 7. Top 5 món bán chạy nhất trong ngày (chỉ tính món từ order không CANCELLED)
