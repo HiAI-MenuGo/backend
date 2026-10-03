@@ -14,8 +14,6 @@ export const sessionOrderItemModifierSchema = z.object({
 
 export const sessionOrderItemSchema = z.object({
   menuItemId: z.string().min(1, 'menuItemId là bắt buộc'),
-  name: z.string().optional(),
-  price: z.number().optional(),
   quantity: z.number().int().positive('Số lượng món phải lớn hơn 0'),
   note: z.string().optional().nullable(),
   modifiers: z.array(sessionOrderItemModifierSchema).optional().default([]),
@@ -29,12 +27,9 @@ export const createSessionOrderSchema = z.object({
     .optional(),
   body: z.object({
     tableId: z.string().optional(),
-    branchId: z.string().optional(),
-    tenantId: z.string().optional(),
     items: z.array(sessionOrderItemSchema).min(1, 'Giỏ hàng không được để trống'),
     voucherCode: z.string().optional().nullable(),
     discountAmount: z.number().nonnegative().optional().default(0),
-    totalAmount: z.number().optional(),
     note: z.string().optional().nullable(),
   }),
 });
@@ -47,14 +42,13 @@ export class SessionOrderController {
         return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu mã định danh bàn', 400);
       }
 
-      const { items, voucherCode, discountAmount, totalAmount, note } = req.body;
+      const { items, voucherCode, discountAmount, note } = req.body;
 
       const result = await SessionOrderService.createSessionOrder({
         tableId,
         items,
         voucherCode,
         discountAmount,
-        totalAmount,
         note,
       });
 
