@@ -459,6 +459,7 @@ model OrderSession {
   orders       Order[]
   transactions PaymentTransaction[]
 
+  @@unique([branchId, sessionCode])
   @@index([tenantId, branchId, status])
   @@index([tenantId, tableId])
 }
@@ -481,6 +482,7 @@ model Order {
   session OrderSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   items   OrderItem[]
 
+  @@unique([branchId, orderCode])
   @@index([tenantId, branchId, status])
   @@index([createdAt])
 }
