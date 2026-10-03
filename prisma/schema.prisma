@@ -299,7 +299,7 @@ model MenuItem {
   id           String   @id @default(uuid())
   tenantId     String
   categoryId   String
-  code         String?
+  code         String
   name         String
   description  String?
   basePrice    Float
