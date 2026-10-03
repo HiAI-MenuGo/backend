@@ -7,10 +7,10 @@ export interface OrderItemDetail {
   price: number;
   note?: string;
   imageUrl?: string;
-  status?: 'PENDING' | 'PREPARING' | 'DONE';
+  status?: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'DONE' | 'CANCELLED';
 }
 
-export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'DONE';
+export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DONE' | 'CANCELLED';
 
 export interface LiveOrder {
   id: string;
@@ -140,7 +140,7 @@ export class OrderService {
   static updateItemStatus(
     orderId: string,
     itemId: string,
-    status: 'PENDING' | 'PREPARING' | 'DONE',
+    status: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'DONE' | 'CANCELLED',
     branchId: string = 'default-branch'
   ) {
     const order = activeOrders.find((o) => o.id === orderId && o.branchId === branchId);

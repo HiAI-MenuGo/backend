@@ -20,7 +20,8 @@ export class OrderController {
       const { status } = req.body;
       const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
 
-      if (!status || !['PENDING', 'CONFIRMED', 'DONE'].includes(status)) {
+      const VALID_ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'DONE', 'CANCELLED'];
+      if (!status || !VALID_ORDER_STATUSES.includes(status)) {
         return ApiResponse.error(res, 'INVALID_STATUS', 'Trạng thái đơn không hợp lệ', 400);
       }
 
@@ -42,6 +43,11 @@ export class OrderController {
 
       if (!orderId || !status) {
         return ApiResponse.error(res, 'INVALID_PARAMS', 'Thiếu orderId hoặc status', 400);
+      }
+
+      const VALID_ITEM_STATUSES = ['PENDING', 'PREPARING', 'READY', 'SERVED', 'DONE', 'CANCELLED'];
+      if (!VALID_ITEM_STATUSES.includes(status)) {
+        return ApiResponse.error(res, 'INVALID_STATUS', 'Trạng thái món không hợp lệ', 400);
       }
 
       const updatedItem = OrderService.updateItemStatus(orderId, itemId, status, branchId);
