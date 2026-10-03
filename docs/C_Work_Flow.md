@@ -949,4 +949,37 @@ git push origin feat/be-admin-report-c
   5. Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
   6. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
 
-
+### 03/10/2026 — Vòng 7 Cascade item→order DONE (Commit Backend `79b8ddb` | Frontend `zero-diff`)
+- **Mục tiêu hoàn thành**: Khép kín tính đối xứng của cơ chế cascade trạng thái đơn hàng. Trước Vòng 7, khi chuyển order sang DONE thì toàn bộ items được tự động chuyển sang DONE (chiều xuôi), nhưng khi bếp làm xong từng món trên KDS và món cuối cùng hoàn tất thì order trong database vẫn bị kẹt ở trạng thái cũ (PENDING/PREPARING). Sau Vòng 7, khi món cuối cùng hoàn tất, order trong DB tự động chuyển sang DONE và bắn socket realtime `ORDER_UPDATED` để KDS và các client cập nhật tức thì.
+- **Việc A1 — Tự động chuyển order sang DONE khi hoàn tất toàn bộ món (vai A, backend `79b8ddb`)**:
+  - `backend/src/services/order.service.ts`: Trong method `updateItemStatus`, sau khi `prisma.orderItem.update` thành công:
+    - Thực hiện đúng 1 query lean `prisma.orderItem.findMany({ where: { orderId: order.id }, select: { status: true } })` đọc lại danh sách món của order trong cùng request (mô hình read-then-conditional-write, không cần bọc thêm transaction mới để đảm bảo tốc độ và tránh lock DB).
+    - **Luật kích hoạt cascade**:
+      1. Order hiện tại chưa ở trạng thái kết thúc (`order.status !== 'DONE' && order.status !== 'CANCELLED'`). Bỏ qua nếu order đã VOID hoặc đã DONE từ trước.
+      2. Toàn bộ món của đơn đều đã kết thúc: mọi item đều thuộc tập `['DONE', 'CANCELLED']`. Món bị hủy lẻ (`CANCELLED`) không chặn tiến trình hoàn tất của toàn đơn (tương thích và đối xứng với cascade chiều ngược bỏ qua CANCELLED).
+      3. Phải có ít nhất 1 món hoàn tất: `orderItems.some(it => it.status === 'DONE')`. Đơn bị hủy lẻ từng món (100% CANCELLED, 0 món DONE) sẽ giữ nguyên trạng thái cũ, không tự chuyển sang DONE.
+    - Khi thỏa mãn đầy đủ các điều kiện trên:
+      - Cập nhật DB: `await prisma.order.update({ where: { id: order.id }, data: { status: 'DONE' } })`.
+      - Phát tín hiệu realtime: `emitToBranch(branch.id, SOCKET_EVENTS.ORDER_UPDATED, { orderId: order.id, status: 'DONE', updatedAt: new Date().toISOString(), branchId: branch.id })` với đúng payload shape chuẩn sẵn có.
+- **Việc C1 — Frontend (vai C, zero-diff)**:
+  - Giữ nguyên toàn bộ mã nguồn frontend (0 file thay đổi).
+  - Giao diện KDS (`app/kds/page.tsx`) đã có sẵn handler lắng nghe socket `order:updated` để cập nhật cột Kanban; không phát sinh sai lệch type hoặc lệch shape event.
+- **2 Thay đổi hành vi so với trước**:
+  1. **Database tự động DONE theo bếp**: Trạng thái order trong cơ sở dữ liệu luôn phản ánh đúng tiến độ thực tế của nhà bếp theo thời gian thực thay vì bị kẹt lại ở PENDING/PREPARING.
+  2. **Đồng bộ KDS hoàn hảo khi tải lại**: KDS nhận sự kiện `order:updated` chuẩn xác, không còn tình trạng trên màn hình bếp client thao tác thì hiện DONE nhưng client khác hoặc khi F5/refresh lại trang thì đơn bị nhảy ngược về PREPARING do DB chưa cập nhật.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0.
+  - Test suite runtime (`test_vong7.ts` trên CSDL thật):
+    1. Đơn 2 món: hoàn tất món 1 $\rightarrow$ order vẫn giữ `PREPARING` trong DB, không có sự kiện `order:updated` thừa nào phát sinh.
+    2. Hoàn tất tiếp món 2 (món cuối cùng) $\rightarrow$ order trong DB lập tức chuyển sang `DONE`, nhận được đúng 1 sự kiện `order:updated` với payload chuẩn `{ orderId, status: 'DONE', updatedAt, branchId }`.
+    3. Đơn có 1 món `CANCELLED` + 1 món `DONE` $\rightarrow$ order tự động chuyển sang `DONE` trong DB.
+    4. Đơn bị hủy lẻ từng món (toàn bộ món `CANCELLED`, 0 món `DONE`) $\rightarrow$ order giữ nguyên trạng thái, không bị chuyển sang `DONE` và không emit `order:updated`.
+    5. Order đã ở trạng thái `CANCELLED` (đã VOID) $\rightarrow$ PATCH item không kích hoạt cascade, order giữ nguyên `CANCELLED`.
+    - Dọn dẹp sạch sẽ toàn bộ dữ liệu test và file script tạm thời.
+  - `frontend`: `npm run check:i18n` 394/394 keys khớp tuyệt đối; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  1. Cashier & Payment tại bàn/quầy vẫn đang chạy mock trong `cashier.controller.ts` (Team B phụ trách thanh toán đóng session).
+  2. Method `createOrder` (POST `/orders/`) trong `order.service.ts` vẫn là mock in-memory cũ (không còn frontend nào gọi).
+  3. Trừ kho BOM tự động khi hoàn tất đơn hàng/thanh toán.
+  4. Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+  5. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
