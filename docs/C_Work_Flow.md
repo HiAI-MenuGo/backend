@@ -925,7 +925,7 @@ git push origin feat/be-admin-report-c
   - `backend/src/services/analytics.service.ts`: Bổ sung điều kiện `status: { not: 'CANCELLED' }` trực tiếp ở cấp `OrderItem` trong truy vấn `topItems`, ngăn chặn trường hợp món bị khách hoặc bếp hủy lẻ nhưng vẫn lọt vào danh sách món bán chạy nhất ngày.
 - **Việc B3 — Gắn imageUrl thật cho OrderItem (vai A, backend `5b8441b`)**:
   - `backend/src/services/order.service.ts`:
-    - Bổ sung `menuItem: { select: { imageUrl: true } }` tại 5 vị trí include items (`getActiveOrders`, `getOrderById`, `updateOrderStatus`, `updateItemStatus`, `voidOrder`, `getOrderHistory`).
+    - Bổ sung `menuItem: { select: { imageUrl: true } }` tại 6 vị trí include items (`getActiveOrders`, `getOrderById`, `updateOrderStatus`, `updateItemStatus`, `voidOrder`, `getOrderHistory`).
     - Cập nhật adapter `mapPrismaOrderToLiveOrder` gán `imageUrl: item.menuItem?.imageUrl || undefined`.
     - Màn hình bếp KDS và card đơn hàng nhận được URL ảnh món thực tế từ CSDL.
 - **Việc B4 — Tìm kiếm lịch sử đơn mở rộng theo mã bàn (vai A, backend `5b8441b`)**:
