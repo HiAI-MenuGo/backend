@@ -676,10 +676,10 @@ git push origin feat/be-admin-report-c
   - `backend/prisma/schema.prisma`: Thêm unique constraints `@@unique([tenantId, code])` cho `MenuItem`, `@@unique([tenantId, name])` cho `ModifierGroup`, `@@unique([modifierGroupId, name])` cho `ModifierOption`. Sinh migration `20261002090000_catalog_idempotent_uniques`.
   - `backend/prisma/seed.ts`: Chuyển 100% catalog (`modifierGroup` + options, `menuCategory`, `menuItem` + `itemModifierGroup`, `ingredient` + `recipe`, `membershipTier`, `customer`, `voucher`) sang `upsert`.
   - Branding: Tách `prisma.tenantBranding.upsert` riêng biệt để rerun luôn cập nhật logo, màu sắc, ngân hàng thay vì bỏ qua.
-  - Bảo toàn guard an toàn `skipCatalog` khi tenant đã có `orderSession` vận hành (`ALLOW_SEED_WIPE=true` khi cần wipe tường minh). Bỏ khối xóa mù cũ (`deleteMany`).
+  - Giữ nguyên guard an toàn `skipCatalog` khi tenant đã có `orderSession` vận hành; khối `deleteMany` còn tồn tại nhưng **chỉ chạy sau guard** khi `ALLOW_SEED_WIPE=true` (wipe tường minh), còn lần seed bình thường thì idempotent hoàn toàn bằng `upsert`.
   - **Verify Runtime**: Chạy `npx prisma db seed` 3 lần liên tiếp: exit 0, đếm record khớp tuyệt đối không tăng/không duplicate: `tenant: 1`, `branding: 1`, `branch: 1`, `user: 7`, `area: 2`, `table: 7`, `modifierGroup: 4`, `modifierOption: 14`, `menuCategory: 3`, `menuItem: 5`, `itemModifierGroup: 10`, `ingredient: 4`, `recipe: 6`, `membershipTier: 4`, `customer: 2`, `voucher: 2`.
-- **Giai đoạn 2 — Export Z-Report Dấu Tiếng Việt + Font + Logo (P1-2)** (Commit `b36419d`):
-  - Bổ sung font Unicode chuẩn `assets/fonts/DejaVuSans.ttf` (757KB) và `assets/fonts/DejaVuSans-Bold.ttf` (705KB).
+- **Giai đoạn 2 — Export Z-Report Dấu Tiếng Việt + Font (P1-2)** (Commit `b36419d`):
+  - Bổ sung font Unicode chuẩn `assets/fonts/DejaVuSans.ttf` (757,076 bytes) và `assets/fonts/DejaVuSans-Bold.ttf` (705,684 bytes).
   - `backend/src/controllers/zreport.controller.ts`: Sửa 100% nhãn không dấu sang tiếng Việt chuẩn có dấu (`Doanh thu tiền mặt`, `Doanh thu VietQR`, `Doanh thu thẻ`, `Tổng doanh thu`, `Số đơn hoàn thành`, `Số món hủy`, `Giảm giá voucher`, header Excel/CSV `Chỉ tiêu` / `Giá trị`).
   - PDF khổ 80mm nhiệt: `doc.registerFont` nhúng font `DejaVuSans` & `DejaVuSans-Bold`, render header tên quán (`tenant.name`) + chi nhánh (`branch.name`), tiêu đề `BÁO CÁO KẾT CA (Z-REPORT)`, dòng `Tổng doanh thu` in đậm to rõ, footer `Xuất lúc: ...`.
   - **Verify Runtime**: Gọi export thực tế thành công:
@@ -695,4 +695,11 @@ git push origin feat/be-admin-report-c
     - HTML 4,187 chars pass 100% 7 tiêu chí kiểm tra (tên quán, tên nhân viên, vai trò, link đặt mật khẩu, thời hạn 24h, bản dịch EN, thẻ logo).
     - Kiểm tra fallback khi thiếu SMTP trả về `false` + log `mail skipped`.
 - **Tổng kết Verification**: `npx tsc --noEmit` exit 0; `npm run build` exit 0 sạch sẽ.
+- **Review sau bàn giao (cùng ngày)** — đã sửa 3 điểm diễn đạt quá lời trong nhật ký:
+  - "Bỏ khối xóa mù `deleteMany`" → sửa thành "wipe có điều kiện sau guard `ALLOW_SEED_WIPE`" (thực tế `deleteMany` vẫn còn, chỉ không chạy trong seed thường lệ).
+  - "Font + Logo" → sửa thành "Font" (PDF hiện in **tên** quán/chi nhánh/địa chỉ bằng chữ; **chưa** nhúng ảnh logo từ branding — nợ chuyển vòng sau).
+  - Dung lượng font ghi chính xác theo bytes thay vì làm tròn KB.
+- **Lưu ý còn lại để vòng sau**:
+  - `MenuItem.code` đang nullable + `@@unique([tenantId, code])`: Postgres cho phép nhiều `NULL` nên `upsert where tenantId_code` sẽ lỗi nếu `code=null`. Seed hiện dùng code non-null nên an toàn; nên chuyển `NOT NULL` ở migration tiếp theo.
+  - Nhúng ảnh logo branding vào header PDF/Excel (khổ 80mm nên để trang trí nhỏ, không chiếm quá 1/3 chiều cao header).
 
