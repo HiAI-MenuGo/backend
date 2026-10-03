@@ -703,3 +703,28 @@ git push origin feat/be-admin-report-c
   - `MenuItem.code` đang nullable + `@@unique([tenantId, code])`: Postgres cho phép nhiều `NULL` nên `upsert where tenantId_code` sẽ lỗi nếu `code=null`. Seed hiện dùng code non-null nên an toàn; nên chuyển `NOT NULL` ở migration tiếp theo.
   - Nhúng ảnh logo branding vào header PDF/Excel (khổ 80mm nên để trang trí nhỏ, không chiếm quá 1/3 chiều cao header).
 
+### 03/10/2026 — Vòng 1 Quick wins A+C (Commits Backend `856536f`, `a378971` | Frontend `4e63940`, `84ec9d4`)
+- **Việc A1 — Mở PREPARING/READY (vai A, backend `feat/be-admin-report-c` → `856536f`)**:
+  - `backend/src/services/order.service.ts`: Mở rộng type `LiveOrderStatus` và `OrderItemDetail.status` hỗ trợ đầy đủ lifecycle theo BUSINESS.md §3 và OrderStatus enum: `'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DONE' | 'CANCELLED'`.
+  - `backend/src/controllers/order.controller.ts`: Cho phép validator `updateStatus` chấp nhận `PREPARING` và `READY`. Đồng thời validator `updateItemStatus` chuẩn hóa tập trạng thái `['PENDING', 'PREPARING', 'READY', 'SERVED', 'DONE', 'CANCELLED']` (thay vì string tự do), đảm bảo an toàn kiểu dữ liệu.
+  - **Verify Runtime**: `PATCH /orders/:id/status` với `PREPARING` và `READY` trả HTTP 200 thành công; gửi mã lạ trả HTTP 400 `INVALID_STATUS`; `npx tsc --noEmit` exit 0.
+- **Việc C1 — order.note đa dòng (vai C, frontend `feat/web-frontend-c` → `4e63940`)**:
+  - `frontend/components/kds/OrderKanbanCard.tsx`: Tái sử dụng component `NoteLinesDark` từ `frontend/lib/format-note.tsx` để render `order.note` đa dòng bullet thay vì hiển thị 1 dòng liền mạch (RULES §5A / SKILLS §6A).
+  - `frontend/app/table/[tableId]/CartDrawer.tsx`: Import `NoteLinesDark` từ `../../../lib/format-note` và hiển thị `item.note` dạng đa dòng bullet cam/vàng chuẩn mực.
+  - **Verify Runtime**: `npx tsc --noEmit` exit 0; không refactor logic ngoài phạm vi.
+- **Việc A2 — MenuItem.code NOT NULL (vai A, backend `feat/be-admin-report-c` → `a378971`)**:
+  - `backend/prisma/schema.prisma`: Đổi `code String?` thành `code String` (NOT NULL).
+  - Tạo migration `20261003133500_make_menuitem_code_not_null`: bao gồm câu lệnh backfill `UPDATE "MenuItem" SET "code" = 'ITEM-' || SUBSTRING("id", 1, 8) WHERE "code" IS NULL;` trước khi `ALTER TABLE ... SET NOT NULL`.
+  - Chạy `npx prisma migrate deploy` thành công; `npx prisma generate` cập nhật client.
+  - **Verify Runtime**: Chạy `npx prisma db seed` 2 lần liên tiếp: exit 0, đếm record khớp tuyệt đối không tăng/không duplicate: `menuItem: 5`, `ingredient: 4`, `recipe: 6`, `membershipTier: 4`, `customer: 2`, `voucher: 2`; `npx tsc --noEmit` exit 0.
+- **Việc C2 — Dọn 120 key i18n dư (vai C, frontend `feat/web-frontend-c` → `84ec9d4`)**:
+  - `frontend/lib/i18n/locales/vi.json` & `en.json`: Xóa triệt để toàn bộ 120 key dư không được gọi trong `app/` và `components/` (các key generic `common.save/search`, `pos.*`, `dashboard.*`, `zReport.*` thừa từ giai đoạn khởi tạo khung).
+  - Từ điển giảm từ 508 key xuống đúng **388 key thực dùng**, song song tuyệt đối 1-1 giữa `vi` và `en`.
+  - Không giữ lại key thừa nào do toàn bộ 388 key hiện tại đã bao phủ 100% các màn hình đang hoạt động; các tính năng tương lai sẽ bổ sung key theo luồng feature mới.
+  - **Verify Runtime**: `npm run check:i18n` exit 0 (`vi keys: 388 | en keys: 388 | keys được gọi: 388 | OK: song song tuyệt đối`); `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ còn lại (Backlog)**:
+  - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
+  - Team A: Shared API route alias `POST /sessions/:tableId/order`.
+  - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+
+
