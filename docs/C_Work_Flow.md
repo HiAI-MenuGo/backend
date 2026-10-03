@@ -801,6 +801,65 @@ git push origin feat/be-admin-report-c
   - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
   - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
 
-
-
-
+### 03/10/2026 — Vòng 4 Order service lên Prisma (Commits Backend `ff0e1b7`, `5999866`)
+- **Mục tiêu hoàn thành**: Nối chỗ đứt lớn nhất của hệ thống: KDS (`app/kds/page.tsx` gọi `GET /orders/active`) chuyển từ 3 đơn mock cứng (`ord-101/102/103`) sang đọc và điều khiển đơn thật từ PostgreSQL qua Prisma Client. Đơn đặt từ khách quét QR (`POST /sessions/:tableId/order`) lập tức hiển thị lên màn hình bếp end-to-end.
+- **Việc M1 — Migration thêm DONE vào OrderItemStatus (vai A, backend `ff0e1b7`)**:
+  - `backend/prisma/schema.prisma`: Bổ sung giá trị `DONE` vào enum `OrderItemStatus` (`PENDING`, `PREPARING`, `READY`, `SERVED`, `DONE`, `CANCELLED`), bảo lưu `SERVED` cho bước bưng món/phục vụ sau này.
+  - Migration thủ công `20261003144500_add_done_to_order_item_status`:
+    ```sql
+    ALTER TYPE "OrderItemStatus" ADD VALUE 'DONE';
+    ```
+  - Chạy `npx prisma migrate deploy` và `npx prisma generate` thành công sạch sẽ. Sau migration này, validator `updateItemStatus` (đã mở `DONE` từ Vòng 1) khớp enum CSDL 100%. Blocker `DONE` vs `SERVED` chính thức đóng hoàn toàn.
+- **Việc A1 — Viết lại order.service.ts sang Prisma (vai A, backend `5999866`)**:
+  - Tái cấu trúc `backend/src/services/order.service.ts` & `backend/src/controllers/order.controller.ts` thành async/await kết nối trực tiếp Prisma Client.
+  - Bảo lưu nguyên vẹn các export types (`LiveOrder`, `OrderItemDetail`, `LiveOrderStatus`), method signature và hợp đồng response `ApiResponse`.
+  - **Bảng mapping Prisma Model → LiveOrder DTO (Zero-breaking frontend KDS)**:
+    | Trường LiveOrder DTO | Nguồn dữ liệu Prisma / Adapter Logic | Ghi chú |
+    | :--- | :--- | :--- |
+    | `id` | `Order.id` | UUID đơn hàng thực tế |
+    | `code` | `Order.orderCode` | Mã hiển thị `#ORD-YYYYMMDD-###` |
+    | `time` | `format(Order.createdAt, 'HH:mm', 'vi-VN')` | Giờ đặt hiển thị trên card KDS |
+    | `orderType` | `Order.orderType` | `DINE_IN` hoặc `TAKEAWAY` |
+    | `status` | `Order.status` | `PENDING`, `PREPARING`, `READY`, `DONE`, `CANCELLED` |
+    | `items` | `Order.items` (join `modifiers`) | Mảng món ăn kèm ghi chú topping gộp |
+    | `items[].price` | `OrderItem.unitPrice` | Đơn giá món |
+    | `items[].imageUrl` | `undefined` | Ghi nợ: join MenuItem nếu cần hiển thị ảnh |
+    | `items[].status` | `OrderItem.status` | Trạng thái từng món ăn (hỗ trợ `DONE`) |
+    | `note` | `Order.note` | Ghi chú toàn đơn |
+    | `total` | `Order.totalAmount` | Tổng tiền đơn hàng |
+    | `paymentStatus` | `'PAID'` nếu có tx `PAID`, ngược lại `'UNPAID'` | Đọc từ `OrderSession.transactions` |
+    | `paymentMethod` | `tx.method` (nếu đã thanh toán) | `CASH` hoặc `VIETQR` |
+    | `tableId` | `Session.table.id` | Truy xuất qua quan hệ 2-hop `Order.session.table` |
+    | `tableName` | `Session.table.name` | Tên bàn ăn (VD: `Bàn 02 - Trung Tâm`) |
+    | `branchId` / `tenantId` | `Order.branchId` / `Order.tenantId` | Đảm bảo tính cô lập chi nhánh |
+    | `countdownSeconds` | `Math.max(0, 600 - elapsedSeconds)` | Đếm lùi chuẩn hóa 10 phút dựa trên `createdAt` |
+    | `createdAt` | `Order.createdAt.toISOString()` | Timestamp ISO chuẩn |
+  - **3 Thay đổi hành vi quan trọng so với Mock cũ**:
+    1. **`voidOrder` không xóa row (Fix đúng nghiệp vụ)**: Mock cũ dùng `activeOrders.splice(index, 1)` làm biến mất hoàn toàn đơn khỏi RAM. Logic mới cập nhật `status = CANCELLED` cho Order và tất cả OrderItem liên quan, giữ nguyên bản ghi trong database để đối soát kiểm toán và hiển thị trong lịch sử (`/orders/history`).
+    2. **`GET /orders/active` tự động loại `DONE` và `CANCELLED`**: Khớp với mock cũ khi hoàn thành đơn (unshift sang history), truy vấn Prisma lọc `status NOT IN ('DONE', 'CANCELLED')`. Đơn đã nấu xong (`DONE`) hoặc bị hủy (`CANCELLED`) tự động biến mất khỏi Kanban active board và chuyển sang lịch sử.
+    3. **`GET /orders/history` thu hẹp tìm kiếm**: Lọc chính xác theo `branchId`, khoảng ngày `startDate`/`endDate`, và `search` theo `orderCode` (phân trang `page`/`limit`). Tạm bỏ tìm kiếm theo `tableName`/`customerName` của mock cũ (ghi nợ chuyển sang vòng sau).
+  - **Luật bảo mật Tenant / Branch Isolation**:
+    - Phân giải `tenantId` và `branchId` từ bảng `Branch` theo `branchId` client truyền (hỗ trợ alias `default-branch` cho KDS dev mode trỏ về chi nhánh flagship active đầu tiên).
+    - Client truyền `branchId` không tồn tại lập tức nhận HTTP 404 `BRANCH_NOT_FOUND` (ngăn chặn IDOR).
+    - Bắt lỗi chuẩn: Đơn không tìm thấy trả HTTP 404 `ORDER_NOT_FOUND`; Món không tìm thấy trả HTTP 404 `ITEM_NOT_FOUND`.
+  - **Socket Events**: Bảo lưu nguyên vẹn 4 socket emit: `order:updated` (ORDER_UPDATED), `order:item-status` (ORDER_ITEM_STATUS), `order:voided` (ORDER_VOIDED), và `order:new` (ORDER_NEW trong mock createOrder). Lỗi socket được bắt bằng try/catch ghi log warn, không làm rollback transaction database.
+  - **Khoanh vùng phạm vi (Cấm chạm)**: Giữ nguyên method `createOrder` mock (ghi nợ); không đụng `cashier.controller.ts`, `table.controller.ts`, v.v.
+- **Việc C1 — Đảm bảo Zero-diff Frontend (vai C)**:
+  - Do DTO `LiveOrder` và các endpoint `/api/orders/*` giữ nguyên 100% hình thái dữ liệu và schema response, toàn bộ mã nguồn frontend tại `app/kds/page.tsx` và `components/kds/*` không phải sửa bất kỳ dòng nào.
+  - Đạt tiêu chí **Zero-diff frontend**.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; `npx prisma migrate status` 6 migrations up-to-date.
+  - Test luồng thực tế trên seed data database:
+    1. Tạo đơn bàn 02: `POST /api/sessions/:tableId/order` → HTTP 201, sinh đơn `#ORD-20261003-0001` (Trà Đào Cam Sả, 90.000đ).
+    2. Kiểm tra KDS: `GET /api/orders/active?branchId=default-branch` → HTTP 200, trả về đúng 1 đơn thật vừa tạo với table name `Bàn 02 - Trung Tâm`, sạch 100% các đơn mock cũ (`ord-101/102/103`).
+    3. Cập nhật tiến độ: `PATCH /api/orders/:id/status` với `status: PREPARING` → HTTP 200, đơn chuyển trạng thái đang nấu; card KDS chuyển sang cột "Đang Nấu".
+    4. Bếp hoàn thành món: `PATCH /api/orders/items/:id/status` với `status: DONE` → HTTP 200; kiểm tra PostgreSQL record `OrderItem.status = 'DONE'` chuẩn enum.
+    5. Hủy đơn: `POST /api/orders/:id/void` → HTTP 200, `Order.status = 'CANCELLED'`; bản ghi trong CSDL vẫn tồn tại (không bị xóa); đơn tự động rời khỏi `GET /orders/active`.
+    6. Lịch sử đơn: `GET /api/orders/history?search=ORD-20261003-0001` → HTTP 200, tìm thấy đơn đã hủy với đầy đủ chi tiết phân trang (`page: 1, total: 1, totalPages: 1`).
+    7. Bảo mật chi nhánh: `GET /api/orders/active?branchId=non-existent-branch-id` → HTTP 404 `BRANCH_NOT_FOUND`.
+  - `frontend`: `npm run check:i18n` 388/388 keys khớp 1-1; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  - Cashier / Payment vẫn đang chạy mock trong `cashier.controller.ts` (thuộc Team B / Vòng 5 triển khai thanh toán đóng session).
+  - Method `createOrder` (POST `/orders/`) trong `order.service.ts` vẫn là in-memory mock (đã ghi nợ, không còn frontend nào gọi).
+  - Item image: `OrderItem.imageUrl` đang trả `undefined` (ghi nợ join `MenuItem` nếu KDS cần thumbnail).
+  - Tìm kiếm history theo `tableName` / `customerName` tạm thời thu hẹp về `orderCode`.
