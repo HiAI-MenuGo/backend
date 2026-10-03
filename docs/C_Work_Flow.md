@@ -730,4 +730,34 @@ git push origin feat/be-admin-report-c
   - Team A: Shared API route alias `POST /sessions/:tableId/order`.
   - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
 
+### 03/10/2026 — Vòng 2 Session order thật (Commits Backend `1165987` | Frontend `0e5e7b7`, `ed93bc1`)
+- **Việc S0 — Gỡ shim KDS đã hết hạn (vai C, frontend `feat/web-frontend-c` → `0e5e7b7`)**:
+  - `frontend/app/kds/page.tsx`: Gỡ bỏ hoàn toàn map `newStatus === 'PREPARING' ? 'CONFIRMED' : newStatus` chiều gửi của `handleUpdateOrderStatus` do backend đã mở `PREPARING` từ Vòng 1 (`856536f`). Giữ nguyên `normalizeOrderStatus` chiều về để tương thích dữ liệu cũ.
+  - **Verify Runtime**: `npx tsc --noEmit` exit 0.
+- **Việc A1 — POST /sessions/:tableId/order thật (vai A, backend `feat/be-admin-report-c` → `1165987`)**:
+  - Tạo mới `backend/src/services/session-order.service.ts` & `backend/src/controllers/session-order.controller.ts`, mount vào `session.routes.ts` tại `POST /:tableId/order` qua middleware `validate(createSessionOrderSchema)`.
+  - Thực thi trong 1 Prisma transaction duy nhất:
+    1. Kiểm tra `Table` tồn tại và `isActive = true`; lấy `tenantId` và `branchId` từ bản ghi bàn làm source-of-truth; chặn bàn `CLEANING` trả về HTTP 409 `TABLE_NOT_READY`; bàn không tồn tại trả về HTTP 404 `TABLE_NOT_FOUND`.
+    2. Tìm `OrderSession` trạng thái `OPEN` của bàn. Nếu chưa có, tự động tạo mới với `sessionCode` theo scheme `SES-YYYYMMDD-###` (đếm số session trong ngày của chi nhánh).
+    3. Kiểm tra danh sách `menuItemId` cùng tenant và đang active (lỗi → HTTP 400 `INVALID_MENU_ITEM`); tính lại đơn giá và tổng tiền từ cơ sở dữ liệu (không tin giá client gửi).
+    4. Xử lý modifiers: nếu `modifierOptionId` khớp `ModifierOption` trong DB thì gắn liên kết quan hệ và lấy giá DB; nếu không khớp thì gộp `extraPrice` vào đơn giá món và ghi nợ tài liệu.
+    5. Ghi nhận `voucherCode` và `discountAmount` nguyên văn vào session và order (việc validate voucher chuyển giao Team C vòng sau, ghi nợ tài liệu).
+    6. Tạo `Order` (loại `DINE_IN`, trạng thái `PENDING`, mã `ORD-YYYYMMDD-###`) cùng các `OrderItem` và `OrderItemModifier`.
+    7. Cộng dồn `subTotal`, `discountAmount`, `finalAmount` của `OrderSession`; chuyển trạng thái bàn từ `EMPTY`/`RESERVED` sang `OCCUPIED`.
+    8. Bắn các socket events chuẩn đa chi nhánh: `order:new` (đầy đủ thông tin món/ghi chú cho KDS), `table:status-changed` (`OCCUPIED`), và `session:updated`.
+  - **Verify Runtime**:
+    - `npx tsc --noEmit` exit 0; `npm run build` exit 0.
+    - Test thật HTTP trên bàn seed (`Bàn 01`): Đơn 1 tạo thành công session `SES-20261003-001`, order `ORD-20261003-001`, bàn chuyển sang `OCCUPIED`; Đơn 2 trên cùng bàn tái sử dụng đúng session `OPEN`, cộng dồn `subTotal` từ 78.000đ lên 123.000đ; Bàn `CLEANING` trả HTTP 409 `TABLE_NOT_READY`; `menuItemId` lạ trả HTTP 400 `INVALID_MENU_ITEM`; Bàn không tồn tại trả HTTP 404 `TABLE_NOT_FOUND`.
+- **Việc C1 — Xóa fallback mock (vai C, frontend `feat/web-frontend-c` → `ed93bc1`)**:
+  - `frontend/app/table/[tableId]/CartDrawer.tsx`: Xóa triệt để toàn bộ nhánh fallback gọi `POST /orders`. Mọi lỗi từ route thật (400, 404, 409, 500) được hiển thị trực tiếp cho người dùng, không bao giờ gửi request thứ hai che giấu lỗi.
+  - `grep '/orders' frontend/app/table/` trả về đúng 0 kết quả.
+  - **Verify Runtime**: `npx tsc --noEmit` exit 0; `npm run check:i18n` exit 0 (388/388 keys); `npm run build` thành công toàn bộ 23 routes Turbopack.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  - **Blocker DONE vs SERVED**: Giữ nguyên ranh giới quyết định của user, route `session-order` mới chỉ tạo đơn với Prisma enum `PENDING`. Khớp enum `DONE` vs `SERVED` ở item-level cho `order.service` mock vẫn được bảo lưu cho Vòng sau.
+  - **Voucher validation**: `voucherCode` và `discountAmount` hiện ghi nhận nguyên văn; bộ kiểm tra điều kiện áp dụng voucher thuộc phạm vi Team C vòng sau.
+  - **Modifier unmapped extraPrice**: Trường hợp client gửi modifier option không khớp DB, hệ thống gộp extraPrice vào đơn giá món để không rớt tiền của quán; cần hoàn thiện catalog modifier đồng bộ 100%.
+  - Team B: Kích hoạt trừ kho BOM tự động khi thanh toán.
+  - Frontend: Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+
+
 
