@@ -20,6 +20,7 @@ import brandingRouter from './branding.routes';
 import apiKeyRouter from './apikey.routes';
 import webhookRouter from './webhook.routes';
 import { tierRouter, loyaltyCustomerRouter } from './loyalty.routes';
+import analyticsRouter from './analytics.routes';
 
 const rootRouter = Router();
 
@@ -36,6 +37,7 @@ rootRouter.use('/menu', menuRouter);
 rootRouter.use('/platform-admin', platformRouter);
 rootRouter.use('/admin/users', userRouter);
 rootRouter.use('/z-report', zreportRouter);
+rootRouter.use('/analytics', analyticsRouter);
 rootRouter.use('/vouchers', voucherRouter);
 rootRouter.use('/branding', brandingRouter);
 rootRouter.use('/api-keys', apiKeyRouter);
