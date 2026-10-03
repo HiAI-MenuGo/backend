@@ -879,7 +879,7 @@ git push origin feat/be-admin-report-c
     6. **Bàn đang mở (`tables.occupied / tables.total`)**: Đếm số bản ghi `Table` có `status = 'OCCUPIED'` trên tổng số bàn `isActive = true` của chi nhánh.
     7. **Món đang chờ bếp nấu (`tables.pendingKitchen`)**: Đếm số `OrderItem` có trạng thái `PENDING` hoặc `PREPARING` thuộc các đơn chưa `DONE`/`CANCELLED`.
     8. **Xu hướng doanh thu 8 khung giờ (`hourlyTrend`)**: 8 điểm mốc giờ cố định (`08:00`, `10:00`, `12:00`, `14:00`, `16:00`, `18:00`, `20:00`, `22:00`) tổng hợp từ `finalAmount` và số đơn của các session `CLOSED` theo giờ `openedAt`.
-    9. **Top 5 món bán chạy (`topItems`)**: `groupBy` `menuItemId` trên bảng `OrderItem` (thuộc order không `CANCELLED` trong ngày), tính tổng `quantity` và `totalPrice`, join sang `MenuItem` và `MenuCategory` để lấy tên món và danh mục.
+    9. **Top 5 món bán chạy (`topItems`)**: group in-memory theo `menuItemId` trên bảng `OrderItem` (thuộc order không `CANCELLED` trong ngày), tính tổng `quantity` và `totalPrice`, join sang `MenuItem` và `MenuCategory` để lấy tên món và danh mục.
   - **Luật bảo mật Tenant / Branch Isolation**:
     - Phân giải `tenantId` từ chi nhánh; đối chiếu với `req.user.tenantId` để chặn IDOR; branch không tồn tại trả HTTP 404 `BRANCH_NOT_FOUND`.
     - Truy cập không có token trả HTTP 401 `UNAUTHORIZED`; role không phù hợp (ví dụ `KITCHEN`) trả HTTP 403 `FORBIDDEN`.
@@ -955,7 +955,7 @@ git push origin feat/be-admin-report-c
   - `backend/src/services/order.service.ts`: Trong method `updateItemStatus`, sau khi `prisma.orderItem.update` thành công:
     - Thực hiện đúng 1 query lean `prisma.orderItem.findMany({ where: { orderId: order.id }, select: { status: true } })` đọc lại danh sách món của order trong cùng request (mô hình read-then-conditional-write, không cần bọc thêm transaction mới để đảm bảo tốc độ và tránh lock DB).
     - **Luật kích hoạt cascade**:
-      1. Order hiện tại chưa ở trạng thái kết thúc (`order.status !== 'DONE' && order.status !== 'CANCELLED'`). Bỏ qua nếu order đã VOID hoặc đã DONE từ trước.
+      1. Order hiện tại chưa ở trạng thái kết thúc (`order.status !== 'DONE' && order.status !== 'CANCELLED'`). Bỏ qua nếu order đã CANCELLED (bao gồm đơn đã bị void qua voidOrder) hoặc đã DONE từ trước.
       2. Toàn bộ món của đơn đều đã kết thúc: mọi item đều thuộc tập `['DONE', 'CANCELLED']`. Món bị hủy lẻ (`CANCELLED`) không chặn tiến trình hoàn tất của toàn đơn (tương thích và đối xứng với cascade chiều ngược bỏ qua CANCELLED).
       3. Phải có ít nhất 1 món hoàn tất: `orderItems.some(it => it.status === 'DONE')`. Đơn bị hủy lẻ từng món (100% CANCELLED, 0 món DONE) sẽ giữ nguyên trạng thái cũ, không tự chuyển sang DONE.
     - Khi thỏa mãn đầy đủ các điều kiện trên:
@@ -983,3 +983,39 @@ git push origin feat/be-admin-report-c
   3. Trừ kho BOM tự động khi hoàn tất đơn hàng/thanh toán.
   4. Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
   5. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
+
+### 03/10/2026 — Vòng 8 Dọn nợ A+C (Commits Backend `a8b04c8` | Frontend `c25904f`)
+- **Mục tiêu hoàn thành**: Dọn sạch 4 nợ kỹ thuật nhỏ còn tồn đọng giữa các tầng: nối `tenantId` thật cho voucher từ token giải mã bàn QR, loại bỏ endpoint chết `POST /orders/` (thay thế bởi `POST /sessions/:tableId/order`), đồng bộ hóa 100% logic suy luận trạng thái đơn hàng trên KDS client khớp với server, và hiệu chỉnh các điểm diễn đạt chưa chuẩn xác trong tài liệu.
+- **Việc A1 — Xóa bỏ route chết POST /orders/ (vai A, backend `a8b04c8`)**:
+  - Đã rà soát toàn bộ backend: không có caller nội bộ nào gọi `OrderService.createOrder` ngoại trừ chính `OrderController.createOrder`. Frontend cũng không có bất kỳ component/action nào gọi endpoint này.
+  - Gỡ bỏ hoàn toàn cả 3 tầng:
+    1. Route `orderRouter.post('/', OrderController.createOrder)` trong `backend/src/routes/order.routes.ts`.
+    2. Controller method `OrderController.createOrder` trong `backend/src/controllers/order.controller.ts`.
+    3. Service mock `OrderService.createOrder` trong `backend/src/services/order.service.ts`.
+  - **Đường thay thế chính thức**: Toàn bộ luồng tạo đơn hàng khách quét QR sử dụng duy nhất `POST /api/sessions/:tableId/order` (qua `SessionOrderController.createOrder` và `SessionOrderService.createOrder` lưu trực tiếp xuống Prisma với transaction an toàn).
+- **Việc C1 — Nối tenantId thật cho voucher (vai C, frontend `c25904f`)**:
+  - `frontend/app/table/[tableId]/TableMenuClient.tsx`: Lưu trữ `tenantId` từ phản hồi của `GET /api/tables/resolve?token=` vào React state và truyền prop `tenantId={tenantId}` sang `<CartDrawer />`.
+  - `frontend/app/table/[tableId]/CartDrawer.tsx`: Sử dụng prop `tenantId` để gửi vào body request của `/vouchers/apply`, giữ nguyên fallback `'default-tenant'` khi giải mã token thất bại.
+- **Việc C2 — Khớp luật suy luận KDS client với server (vai C, frontend `c25904f`)**:
+  - `frontend/app/kds/page.tsx`: Tại `handleUpdateItemStatus`, chuẩn hóa logic suy luận trạng thái `orderStatus` khớp chính xác với luật cascade của server:
+    - `allFinished`: mọi món đều thuộc tập `['DONE', 'CANCELLED']` và danh sách món > 0.
+    - `hasDone`: có ít nhất 1 món `DONE`.
+    - `orderStatus = 'DONE'` khi và chỉ khi `allFinished && hasDone && order.status !== 'CANCELLED'`.
+    - Bảo toàn trạng thái đơn đã hủy (`CANCELLED`), không còn bị gán đè thành `DONE` khi thao tác trên item; trường hợp `[DONE, CANCELLED]` client hiển thị ngay sang `DONE` đồng nhất với server.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`: `npx tsc --noEmit` exit 0; `npm run build` exit 0; grep `createOrder` trong `src/` về 0 (chỉ còn lại tại `session-order.controller.ts` và `session.routes.ts`).
+  - Test suite runtime (`test_vong8.ts`):
+    1. `POST /api/orders` trả về HTTP 404 Not Found đúng định tuyến.
+    2. `POST /api/sessions/:tableId/order` hoạt động chuẩn xác (Zod validation 400 khi thiếu body).
+    3. Cả 5 routes `/orders` còn lại (`/active`, `/history`, `/:id/status`, `/items/:id/status`, `/:id/void`) hoạt động bình thường.
+    4. Token QR bàn giải mã đúng `tenantId` thật và áp dụng voucher thành công với `tenantId` thật.
+    5. Logic KDS client kiểm thử khớp 100% với server trên các ca `[DONE, CANCELLED]`, `CANCELLED` đơn, và toàn bộ `CANCELLED` món.
+    - Dọn dẹp sạch toàn bộ file script tạm thời.
+  - `frontend`: `npm run check:i18n` 394/394 keys khớp tuyệt đối; `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+- **Nợ kỹ thuật còn lại (Backlog)**:
+  1. Cashier & Payment tại bàn/quầy vẫn đang chạy mock trong `cashier.controller.ts` (Team B phụ trách thanh toán đóng session).
+  2. Trừ kho BOM tự động khi hoàn tất đơn hàng/thanh toán.
+  3. Nhúng ảnh logo branding thực tế vào header xuất PDF Z-Report.
+  4. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
+  5. Multi-tenant QR: hoàn thiện truyền `tenantId` đầy đủ xuyên suốt toàn bộ luồng nghiệp vụ.
+
