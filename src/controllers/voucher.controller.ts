@@ -165,7 +165,7 @@ export class VoucherController {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin quán', 401);
       }
       const { id } = req.params;
-      const { sessionId, orderId, customerId, discountAmount = 0, discount = 0 } = req.body;
+      const { sessionId, orderId, customerId, discountAmount = 0, discount = 0, subTotal } = req.body;
       const usageSessionId = sessionId || orderId;
       if (!usageSessionId) {
         return ApiResponse.error(res, 'MISSING_FIELDS', 'Vui lòng cung cấp sessionId của đơn áp voucher', 400);
@@ -174,9 +174,33 @@ export class VoucherController {
       if (!voucher) {
         return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy voucher', 404);
       }
-      if (voucher.usageLimit && voucher.usedCount >= voucher.usageLimit) {
-        return ApiResponse.error(res, 'VOUCHER_EXHAUSTED', 'Mã giảm giá đã hết lượt sử dụng', 400);
+
+      // Xác định subTotal hiện tại của đơn hàng để kiểm tra lại điều kiện
+      let currentSubTotal = Number(subTotal);
+      if (isNaN(currentSubTotal) || currentSubTotal <= 0) {
+        const session = await prisma.orderSession.findUnique({
+          where: { id: usageSessionId },
+          include: { orders: { select: { totalAmount: true } } },
+        });
+        currentSubTotal = session?.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || voucher.minOrderVal || 0;
       }
+
+      // Kiểm tra lại toàn diện điều kiện voucher (isActive, date, usageLimit, minOrder) qua VoucherQuoteService
+      const quote = await VoucherQuoteService.validateVoucherForOrder(
+        tenantId,
+        voucher.code,
+        currentSubTotal
+      );
+
+      if (!quote.valid) {
+        return ApiResponse.error(
+          res,
+          quote.errorCode || 'INVALID_VOUCHER',
+          quote.message || 'Mã giảm giá không hợp lệ hoặc đã hết hạn',
+          400
+        );
+      }
+
       const updated = await prisma.voucher.update({
         where: { id },
         data: { usedCount: { increment: 1 } },

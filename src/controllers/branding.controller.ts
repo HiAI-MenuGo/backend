@@ -45,6 +45,54 @@ export class BrandingController {
   }
 
   /**
+   * GET /api/branding/public?branchId=&tenantId=
+   * Endpoint public cho QR Menu và màn hình thanh toán tại bàn (không cần auth)
+   */
+  static async getPublicBranding(req: Request, res: Response) {
+    try {
+      const branchId = (req.query.branchId as string) || 'default-branch';
+      let branch = await prisma.branch.findUnique({
+        where: { id: branchId },
+      });
+
+      if (!branch && branchId === 'default-branch') {
+        branch = await prisma.branch.findFirst({
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+
+      const tenantId = (req.query.tenantId as string) || branch?.tenantId;
+
+      if (!tenantId) {
+        const tenant = await prisma.tenant.findFirst({ where: { status: 'ACTIVE' } });
+        if (!tenant) {
+          return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
+        }
+        const branding = await prisma.tenantBranding.findUnique({
+          where: { tenantId: tenant.id },
+          include: { tenant: { select: { name: true, code: true, slug: true, status: true } } },
+        });
+        return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+      }
+
+      const branding = await prisma.tenantBranding.findUnique({
+        where: { tenantId },
+        include: { tenant: { select: { name: true, code: true, slug: true, status: true } } },
+      });
+
+      if (!branding) {
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy cấu hình thương hiệu', 404);
+      }
+
+      return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+    } catch (error: any) {
+      logger.error('getPublicBranding failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);
+    }
+  }
+
+  /**
    * PUT /api/branding
    * Cập nhật thông tin nhận diện thương hiệu (ADMIN)
    */

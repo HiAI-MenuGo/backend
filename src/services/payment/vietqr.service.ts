@@ -2,6 +2,8 @@
  * HiAI-MenuGo — VietQR Dynamic Payment Engine (Napas 247 / SePay integration)
  */
 
+import prisma from '../../utils/prisma';
+
 export interface VietQRRequest {
   sessionId: string;
   amount: number;
@@ -9,6 +11,7 @@ export interface VietQRRequest {
   bankBin?: string;
   accountNo?: string;
   accountName?: string;
+  tenantId?: string;
 }
 
 export interface VietQRResponse {
@@ -20,23 +23,47 @@ export interface VietQRResponse {
 }
 
 export class VietQRService {
-  // Cấu hình tài khoản nhận tiền mặc định (có thể override từ Tenant Settings)
-  private static defaultBankBin = '970422'; // MB Bank
-  private static defaultAccountNo = '0334888999';
-  private static defaultAccountName = 'HIAI MENUGO RESTAURANT';
-
   /**
-   * Sinh mã VietQR động theo định dạng QuickLink chuẩn Napas 247
+   * Sinh mã VietQR động theo định dạng QuickLink chuẩn Napas 247 từ TenantBranding
    */
-  static generateDynamicQR(req: VietQRRequest): VietQRResponse {
+  static async generateDynamicQR(req: VietQRRequest): Promise<VietQRResponse> {
+    let bankBin = req.bankBin;
+    let accountNo = req.accountNo;
+    let accountName = req.accountName;
+
+    // Nếu chưa có đủ 3 trường bank, truy vấn từ cấu hình TenantBranding
+    if (!bankBin || !accountNo || !accountName) {
+      if (!req.tenantId) {
+        const err = new Error('BANK_NOT_CONFIGURED');
+        (err as any).statusCode = 400;
+        throw err;
+      }
+
+      let branding = await prisma.tenantBranding.findUnique({
+        where: { tenantId: req.tenantId },
+      });
+
+      if (!branding && (req.tenantId === 'default-tenant' || !req.tenantId)) {
+        branding = await prisma.tenantBranding.findFirst();
+      }
+
+      if (!branding || !branding.bankCode || !branding.bankAccountNo || !branding.bankAccountName) {
+        const err = new Error('BANK_NOT_CONFIGURED');
+        (err as any).statusCode = 400;
+        throw err;
+      }
+
+      bankBin = branding.bankCode;
+      accountNo = branding.bankAccountNo;
+      accountName = branding.bankAccountName;
+    }
+
     const transactionRef = `MG${Date.now().toString().slice(-6)}`;
-    const bankBin = req.bankBin || this.defaultBankBin;
-    const accountNo = req.accountNo || this.defaultAccountNo;
-    const accountName = encodeURIComponent(req.accountName || this.defaultAccountName);
+    const encAccountName = encodeURIComponent(accountName);
     const description = encodeURIComponent(`Thanh toan don ${transactionRef}`);
 
     // QuickLink VietQR chuẩn: https://img.vietqr.io/image/<BANK_BIN>-<ACCOUNT_NO>-compact2.png?amount=<AMOUNT>&addInfo=<INFO>&accountName=<NAME>
-    const qrCodeUrl = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact2.png?amount=${req.amount}&addInfo=${description}&accountName=${accountName}`;
+    const qrCodeUrl = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact2.png?amount=${req.amount}&addInfo=${description}&accountName=${encAccountName}`;
 
     // Thời gian hết hạn sau 60 giây theo nghiệp vụ Task B-010
     const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();

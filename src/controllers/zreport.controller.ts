@@ -145,6 +145,21 @@ export class ZReportController {
         doc.on('data', (c: Buffer) => chunks.push(c));
         const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
 
+        // Fetch branding logo nếu có URL hợp lệ (timeout 5s, fallback text cũ nếu lỗi)
+        let logoBuffer: Buffer | null = null;
+        const logoUrl = tenant?.branding?.logoUrl;
+        if (logoUrl && (logoUrl.startsWith('http://') || logoUrl.startsWith('https://'))) {
+          try {
+            const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(5000) });
+            if (logoRes.ok) {
+              const arrayBuf = await logoRes.arrayBuffer();
+              logoBuffer = Buffer.from(arrayBuf);
+            }
+          } catch (logoErr: any) {
+            logger.warn(`[ZReport] Logo fetch failed, fallback to text: ${logoErr?.message}`);
+          }
+        }
+
         // Đăng ký font DejaVu Sans tiếng Việt
         const fontRegularPath = path.resolve(process.cwd(), 'assets/fonts/DejaVuSans.ttf');
         const fontBoldPath = path.resolve(process.cwd(), 'assets/fonts/DejaVuSans-Bold.ttf');
@@ -156,6 +171,16 @@ export class ZReportController {
           doc.font('DejaVuSans');
         }
 
+        // Vẽ logo góc trái header (fit ~40x40, giữ tỉ lệ)
+        if (logoBuffer) {
+          try {
+            doc.image(logoBuffer, 12, 12, { fit: [40, 40] });
+          } catch (imgErr: any) {
+            logger.warn(`[ZReport] PDF doc.image error, fallback to text: ${imgErr?.message}`);
+            logoBuffer = null;
+          }
+        }
+
         // Header nhà hàng & chi nhánh
         if (hasUnicodeFont) {
           doc.font('DejaVuSans-Bold').fontSize(11).text(restaurantName, { align: 'center' });
@@ -164,6 +189,9 @@ export class ZReportController {
           }
           if (branchAddress) {
             doc.font('DejaVuSans').fontSize(7).text(branchAddress, { align: 'center' });
+          }
+          if (logoBuffer && doc.y < 56) {
+            doc.y = 56;
           }
           doc.moveDown(0.3);
           doc.font('DejaVuSans-Bold').fontSize(10).text('BÁO CÁO KẾT CA (Z-REPORT)', { align: 'center' });
