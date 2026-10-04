@@ -39,13 +39,9 @@ export class VietQRService {
         throw err;
       }
 
-      let branding = await prisma.tenantBranding.findUnique({
+      const branding = await prisma.tenantBranding.findUnique({
         where: { tenantId: req.tenantId },
       });
-
-      if (!branding && (req.tenantId === 'default-tenant' || !req.tenantId)) {
-        branding = await prisma.tenantBranding.findFirst();
-      }
 
       if (!branding || !branding.bankCode || !branding.bankAccountNo || !branding.bankAccountName) {
         const err = new Error('BANK_NOT_CONFIGURED');

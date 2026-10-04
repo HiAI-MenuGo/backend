@@ -20,7 +20,18 @@ export class BrandingController {
 
       let branding = await prisma.tenantBranding.findUnique({
         where: { tenantId },
-        include: {
+        select: {
+          tenantId: true,
+          logoUrl: true,
+          bannerUrl: true,
+          primaryColor: true,
+          secondaryColor: true,
+          accentColor: true,
+          bankCode: true,
+          bankAccountNo: true,
+          bankAccountName: true,
+          wifiSsid: true,
+          footerText: true,
           tenant: {
             select: {
               name: true,
@@ -71,14 +82,40 @@ export class BrandingController {
         }
         const branding = await prisma.tenantBranding.findUnique({
           where: { tenantId: tenant.id },
-          include: { tenant: { select: { name: true, code: true, slug: true, status: true } } },
+          select: {
+            tenantId: true,
+            logoUrl: true,
+            bannerUrl: true,
+            primaryColor: true,
+            secondaryColor: true,
+            accentColor: true,
+            bankCode: true,
+            bankAccountNo: true,
+            bankAccountName: true,
+            wifiSsid: true,
+            footerText: true,
+            tenant: { select: { name: true, code: true, slug: true, status: true } },
+          },
         });
         return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
       }
 
       const branding = await prisma.tenantBranding.findUnique({
         where: { tenantId },
-        include: { tenant: { select: { name: true, code: true, slug: true, status: true } } },
+        select: {
+          tenantId: true,
+          logoUrl: true,
+          bannerUrl: true,
+          primaryColor: true,
+          secondaryColor: true,
+          accentColor: true,
+          bankCode: true,
+          bankAccountNo: true,
+          bankAccountName: true,
+          wifiSsid: true,
+          footerText: true,
+          tenant: { select: { name: true, code: true, slug: true, status: true } },
+        },
       });
 
       if (!branding) {
