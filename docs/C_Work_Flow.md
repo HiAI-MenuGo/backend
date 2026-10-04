@@ -1019,3 +1019,41 @@ git push origin feat/be-admin-report-c
   4. Màn hình POS cashier tích hợp tài khoản ngân hàng cấu hình từ branding.
   5. Multi-tenant QR: hoàn thiện truyền `tenantId` đầy đủ xuyên suốt toàn bộ luồng nghiệp vụ.
 
+### 03/10/2026 — Vòng 9 Hoàn thiện chức năng C (Commits Backend `0a59b36` | Frontend `82b3f9d`)
+- **Mục tiêu hoàn thành**: Đóng 4 nợ chức năng của thành viên C, tập trung vào hoàn thiện thẩm mỹ và tính toàn vẹn dữ liệu: nhúng logo thật lên header xuất PDF Z-Report, thống nhất nguồn tài khoản ngân hàng VietQR duy nhất từ `TenantBranding` (single source of truth), tái kiểm tra toàn diện điều kiện voucher trước khi trừ lượt (redeem), và tự động nhận diện ngôn ngữ trình duyệt (locale auto-detect).
+- **Việc C1 — Logo thật lên header PDF (backend `0a59b36`)**:
+  - `backend/src/controllers/zreport.controller.ts`: Trước khi vẽ header PDF (kích thước receipt [226, 600]), kiểm tra `tenant?.branding?.logoUrl`. Nếu URL hợp lệ (`http://` hoặc `https://`), fetch ảnh bằng `fetch` native với timeout 5 giây (`AbortSignal.timeout(5000)`).
+  - Khi fetch thành công thành `Buffer`, dùng `doc.image(logoBuffer, 12, 12, { fit: [40, 40] })` vẽ logo ở góc trái header, căn chỉnh `doc.y` tránh đè chữ.
+  - Cơ chế **fail-safe toàn diện**: Mọi trường hợp (không có `logoUrl`, fetch timeout, fetch lỗi HTTP, parse buffer lỗi) đều tự động fallback về header dạng text như cũ, ghi warning log và không gây lỗi 400/500 cho API xuất báo cáo.
+- **Việc C2 — Bank branding single-source (backend `0a59b36` + frontend `82b3f9d`)**:
+  - **Backend (`vietqr.service.ts`, `cashier.controller.ts`, `branding.controller.ts`, `branding.routes.ts`)**:
+    - `vietqr.service.ts`: Xóa bỏ hoàn toàn 3 giá trị mặc định cứng (`970422`, `0334888999`, `HIAI MENUGO`). Service tự động query `TenantBranding` theo `tenantId` (nếu chưa truyền đủ trường ngân hàng). Nếu branding trống hoặc chưa cấu hình đủ (`bankCode`, `bankAccountNo`, `bankAccountName`), trả về HTTP 400 với mã lỗi `BANK_NOT_CONFIGURED`. Hỗ trợ fallback tìm branding đầu tiên khi `tenantId === 'default-tenant'`.
+    - `cashier.controller.ts`: Trong method `createVietQR`, resolve `tenantId` qua branch của user / request để truyền vào `VietQRService.generateDynamicQR`, bắt lỗi `BANK_NOT_CONFIGURED` trả về 400.
+    - `branding.controller.ts` & `branding.routes.ts`: Bổ sung endpoint public `GET /api/branding/public?branchId=&tenantId=` (được đặt trước `/:tenantId` để tránh xung đột định tuyến) cho phép POS và trang thanh toán bàn unauthenticated đọc thông tin ngân hàng cấu hình.
+  - **Frontend (`CashierClient.tsx`, `payment/page.tsx`)**:
+    - `frontend/app/pos/CashierClient.tsx`: Xóa bỏ hoàn toàn mã cứng `MB-0901234567`. Sử dụng `apiFetch('/branding')` để lấy cấu hình ngân hàng thật (`bankCode`, `bankAccountNo`, `bankAccountName`), sinh URL `QRCodeSVG` động theo mẫu `img.vietqr.io`. Nếu chưa cấu hình, hiển thị thông báo `bank.notConfiguredNotice`.
+    - `frontend/app/table/[tableId]/payment/page.tsx`: Xóa mã cứng `MB-0901234567`. Tự động resolve branch/tenant từ token bàn và gọi `/branding/public` để lấy cấu hình ngân hàng thật, tạo `qrString` động khớp chính xác với cấu hình nhà hàng.
+- **Việc C3 — Tái kiểm tra điều kiện Voucher khi Redeem (backend `0a59b36`)**:
+  - `backend/src/controllers/voucher.controller.ts`: Trong method `redeemVoucher`, trước khi tăng `usedCount`, gọi lại `VoucherQuoteService.validateVoucherForOrder(tenantId, voucher.code, currentSubTotal)`.
+  - Nếu voucher đã hết hạn (`VOUCHER_EXPIRED`), đơn không đạt giá trị tối thiểu (`ORDER_BELOW_MIN`), voucher bị vô hiệu (`VOUCHER_INACTIVE`), hoặc hết lượt giữa lúc quote và redeem $\rightarrow$ lập tức trả lỗi HTTP 400 với mã lỗi tương ứng, bảo toàn tuyệt đối `usedCount` (không bị trừ lượt oan).
+- **Việc C4 — Locale browser auto-detect (frontend `82b3f9d`)**:
+  - `frontend/context/i18nContext.tsx`: Trong `useEffect` khởi tạo, khi `localStorage` chưa có dữ liệu lưu trữ `menugo_locale`, tự động đọc `navigator.language` (`startsWith('vi') ? 'vi' : 'en'`) làm ngôn ngữ mặc định.
+  - Khi người dùng đã có lựa chọn lưu trước đó trong `localStorage`, ưu tiên sử dụng cấu hình đã lưu như cũ. Không can thiệp middleware, không đổi routing, giữ nguyên tính độc lập của `check:i18n`.
+- **Xác minh kiểm thử toàn diện (Runtime Verification Output)**:
+  - `backend`:
+    - `npx tsc --noEmit` exit 0; `npm run build` exit 0.
+    - Test suite runtime (`test_verify_v9.ts`):
+      1. C1: Xuất PDF có logo (size 1823 bytes) và fallback text khi không logo (size 1362 bytes) đều sinh PDF hợp lệ (`%PDF-`), layout ổn định không tràn viền.
+      2. C2: `VietQRService.generateDynamicQR` sinh đúng QR động từ `TenantBranding` thật trong DB (`MB-0901234567`, tài khoản `CONG TY CO PHAN HIAI MENUGO`), và ném lỗi 400 `BANK_NOT_CONFIGURED` khi tenant không tồn tại branding.
+      3. C3: Redeem voucher đã hết hạn $\rightarrow$ trả về `valid: false`, `errorCode: 'VOUCHER_EXPIRED'`, `usedCount` giữ nguyên bằng 0.
+  - `frontend`:
+    - `npm run check:i18n` 394/394 keys khớp tuyệt đối (exit 0).
+    - `npx tsc --noEmit` exit 0; `npm run build` Turbopack 23 routes biên dịch thành công 100%.
+    - QR tại POS và trang thanh toán bàn hiển thị đúng thông tin ngân hàng từ branding API; tự động nhận diện ngôn ngữ tiếng Việt/tiếng Anh theo trình duyệt khi lần đầu truy cập.
+- **Nợ kỹ thuật còn lại (Backlog chuyển giao Vòng 10 & Team B)**:
+  1. Tối ưu hiệu năng Core Web Vitals (LCP, bundle size, dynamic imports).
+  2. Cấu hình triển khai hạ tầng & CI/CD production (Docker, fly.io/render, environment secrets).
+  3. Trừ kho BOM tự động khi hoàn tất đơn hàng/thanh toán (chờ schema & trigger từ Team B).
+  4. Cashier & Payment tại bàn/quầy đóng session và ghi nhận doanh thu vào DB (Team B phụ trách cổng thanh toán).
+
+
