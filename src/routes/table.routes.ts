@@ -15,6 +15,7 @@ tableRouter.get(
 );
 
 tableRouter.get('/', TableController.getTables);
+tableRouter.post('/', authMiddleware, requireRole(['ADMIN', 'MANAGER']), TableController.createTable);
 tableRouter.patch('/:id/status', TableController.updateStatus);
 
 export default tableRouter;

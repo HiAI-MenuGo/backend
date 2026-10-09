@@ -67,4 +67,34 @@ export class InventoryService {
 
     return item;
   }
+
+  static addIngredient(
+    data: { name: string; quantity: number; unit: string; lowStockThreshold: number; category?: string },
+    branchId: string = 'default-branch'
+  ): Ingredient {
+    const newItem: Ingredient = {
+      id: `ing-${Date.now()}`,
+      name: data.name,
+      quantity: Number(data.quantity) || 0,
+      unit: data.unit || 'kg',
+      lowStockThreshold: Number(data.lowStockThreshold) || 5,
+      category: data.category || 'Khác',
+      branchId,
+      updatedAt: new Date().toISOString(),
+    };
+    ingredients.unshift(newItem);
+    emitToBranch(branchId, SOCKET_EVENTS.INVENTORY_UPDATED, {
+      ingredientId: newItem.id,
+      quantity: newItem.quantity,
+      branchId,
+    });
+    return newItem;
+  }
+
+  static deleteIngredient(id: string, branchId: string = 'default-branch'): boolean {
+    const idx = ingredients.findIndex((i) => i.id === id && i.branchId === branchId);
+    if (idx === -1) return false;
+    ingredients.splice(idx, 1);
+    return true;
+  }
 }

@@ -141,6 +141,7 @@ export class BrandingController {
       }
 
       const {
+        restaurantName,
         logoUrl,
         bannerUrl,
         primaryColor,
@@ -153,6 +154,13 @@ export class BrandingController {
         bankAccountNo,
         bankAccountName,
       } = req.body;
+
+      if (restaurantName !== undefined && typeof restaurantName === 'string' && restaurantName.trim()) {
+        await prisma.tenant.update({
+          where: { id: tenantId },
+          data: { name: restaurantName.trim() },
+        });
+      }
 
       for (const [key, val] of Object.entries({ primaryColor, secondaryColor, accentColor })) {
         if (val && !HEX_COLOR.test(String(val))) {
@@ -188,6 +196,9 @@ export class BrandingController {
           bankCode,
           bankAccountNo,
           bankAccountName,
+        },
+        include: {
+          tenant: { select: { name: true, code: true, slug: true, status: true } },
         },
       });
 

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import ApiResponse from '../utils/response';
-import { AuthService } from '../services/auth.service';
+import { AuthService, AuthUserRecord } from '../services/auth.service';
 
 const loginSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -61,11 +61,21 @@ export class AuthController {
     }
   }
 
-  static me(req: Request, res: Response) {
+  static async me(req: Request, res: Response) {
     try {
       if (!req.user) return ApiResponse.error(res, 'UNAUTHORIZED', 'Chưa xác thực', 401);
-      const user = AuthService.findById(req.user.userId);
-      if (!user) return ApiResponse.error(res, 'USER_NOT_FOUND', 'Không tìm thấy tài khoản', 404);
+      const dbUser = await AuthService.findDbById(req.user.userId);
+      if (!dbUser) return ApiResponse.error(res, 'USER_NOT_FOUND', 'Không tìm thấy tài khoản', 404);
+      const user: AuthUserRecord = {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        passwordHash: dbUser.passwordHash,
+        role: dbUser.role as AuthUserRecord['role'],
+        tenantId: dbUser.tenantId,
+        branchId: dbUser.branchId || '',
+        isActive: dbUser.isActive,
+      };
       return ApiResponse.success(res, AuthService.toPublic(user), 'Lấy thông tin tài khoản thành công');
     } catch (err: unknown) {
       return ApiResponse.error(res, 'FETCH_ME_ERROR', (err as Error).message, 500);

@@ -11,6 +11,8 @@ import ingredientRouter from './ingredient.routes';
 // Team B migrate xong thì xóa file customer.routes.ts + customer.controller.ts mock.
 // import customerRouter from './customer.routes';
 import menuRouter from './menu.routes';
+import categoryRouter from './category.routes';
+import reservationRouter from './reservation.routes';
 
 import platformRouter from './platform.routes';
 import userRouter from './user.routes';
@@ -18,6 +20,7 @@ import zreportRouter from './zreport.routes';
 import voucherRouter from './voucher.routes';
 import brandingRouter from './branding.routes';
 import apiKeyRouter from './apikey.routes';
+import branchRouter from './branch.routes';
 import webhookRouter from './webhook.routes';
 import { tierRouter, loyaltyCustomerRouter } from './loyalty.routes';
 import analyticsRouter from './analytics.routes';
@@ -32,6 +35,8 @@ rootRouter.use('/cashier', cashierRouter);
 rootRouter.use('/sessions', sessionRouter);
 rootRouter.use('/ingredients', ingredientRouter);
 rootRouter.use('/menu', menuRouter);
+rootRouter.use('/categories', categoryRouter);
+rootRouter.use('/reservations', reservationRouter);
 
 // Member C Modules
 rootRouter.use('/platform-admin', platformRouter);
@@ -41,6 +46,7 @@ rootRouter.use('/analytics', analyticsRouter);
 rootRouter.use('/vouchers', voucherRouter);
 rootRouter.use('/branding', brandingRouter);
 rootRouter.use('/api-keys', apiKeyRouter);
+rootRouter.use('/branches', branchRouter);
 rootRouter.use('/webhooks', webhookRouter);
 rootRouter.use('/tiers', tierRouter);
 rootRouter.use('/customers', loyaltyCustomerRouter);

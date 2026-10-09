@@ -35,14 +35,14 @@ export class TableQrController {
         // Prisma) — vẫn ký token gắn tenant/branch từ JWT để chống đoán id.
         // Khi B migrate Tables sang Prisma, nhánh này tự hết tác dụng.
         logger.warn('signQrToken: table ngoài Prisma, ký fallback theo token', { id, tenantId });
-        const fallbackBranch = req.user?.branchId || null;
+        const fallbackBranch = req.user?.branchId || 'default-branch';
         const token = jwt.sign(
           { tableId: id, tenantId, branchId: fallbackBranch },
           JWT_SECRET
         );
         return ApiResponse.success(
           res,
-          { token, urlPath: `/table/${token}`, tableId: id, fallback: true },
+          { token, urlPath: `/${tenantId}/${fallbackBranch}/table/${token}`, tableId: id, fallback: true },
           'Ký mã QR bàn thành công'
         );
       }
@@ -52,7 +52,7 @@ export class TableQrController {
       );
       return ApiResponse.success(
         res,
-        { token, urlPath: `/table/${token}`, tableId: table.id },
+        { token, urlPath: `/${table.tenantId}/${table.branchId}/table/${token}`, tableId: table.id },
         'Ký mã QR bàn thành công'
       );
     } catch (error: any) {

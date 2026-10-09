@@ -70,6 +70,16 @@ export class AuthService {
     return users.find((u) => u.id === id);
   }
 
+  static async findDbById(id: string) {
+    try {
+      return await prisma.tenantUser.findFirst({
+        where: { id, isActive: true },
+      });
+    } catch {
+      return null;
+    }
+  }
+
   static toPublic(user: AuthUserRecord) {
     const { passwordHash: _omit, ...pub } = user;
     return pub;

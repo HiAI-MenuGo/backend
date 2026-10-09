@@ -23,6 +23,7 @@ export const SOCKET_EVENTS = {
   SOLD_OUT_UPDATED: 'sold_out:updated',
   INVENTORY_WARNING: 'inventory:warning',
   INVENTORY_UPDATED: 'inventory:updated',
+  MENU_ITEM_DELETED: 'menu_item:deleted',
 
   // Yêu cầu & Thông báo
   CALL_STAFF_REQUEST: 'call_staff:request',
