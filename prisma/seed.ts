@@ -105,37 +105,25 @@ async function main() {
   console.log(`✅ Branch seeded: ${branch.name}`);
 
   // ==========================================
-  // 3. STAFF USERS (Ibrahim Kadri - Admin)
+  // 3. STAFF USERS (3 tài khoản duy nhất: sa, thd, pvd)
   // ==========================================
   const usersData = [
     {
-      email: 'ibrahim.kadri@tastystation.com',
-      name: 'Ibrahim Kadri',
-      role: UserRole.ADMIN,
-      branchId: branch.id,
-    },
-    {
-      email: 'superadmin@platform.vn',
-      name: 'Super Admin Nền Tảng',
+      email: 'sa@email.com',
+      name: 'Super Admin',
       role: UserRole.PLATFORM_ADMIN,
       branchId: null,
     },
     {
-      email: 'manager@tastystation.com',
-      name: 'Lê Thanh Hải (Quản lý trưởng)',
-      role: UserRole.MANAGER,
+      email: 'thd@gmail.com',
+      name: 'Trần Đạt',
+      role: UserRole.ADMIN,
       branchId: branch.id,
     },
     {
-      email: 'cashier@tastystation.com',
-      name: 'Nguyễn Thị Mai (Thu ngân ca sáng)',
+      email: 'pvd@gmail.com',
+      name: 'Phạm Đoàn',
       role: UserRole.CASHIER,
-      branchId: branch.id,
-    },
-    {
-      email: 'kitchen@tastystation.com',
-      name: 'Phạm Văn Bếp (Bếp trưởng KDS)',
-      role: UserRole.KITCHEN,
       branchId: branch.id,
     },
   ];
@@ -160,7 +148,7 @@ async function main() {
       },
     });
   }
-  console.log(`✅ Seeded ${usersData.length} staff users (Password: '123456')`);
+  console.log(`✅ Seeded ${usersData.length} staff users (Password: '123' / '123456')`);
 
   // ==========================================
   // 4. AREAS & TABLES (Mirroring Screenshot 2 Floor Plan)
