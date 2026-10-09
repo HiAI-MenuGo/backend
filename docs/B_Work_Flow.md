@@ -495,3 +495,20 @@ git push origin feat/be-cashier-kds-b
 
 > [!NOTE]
 > Hook `useSocket()` do Thành viên B tạo ra tại `mobile/src/hooks/useSocket.ts`. Khi Thành viên A cần dùng (cho NotificationScreen), import trực tiếp hook này — **không** tạo một kết nối Socket thứ hai.
+
+---
+
+## 🧾 Kiểm định độc lập 09/10/2026 — Backlog còn lại của B
+
+> Phạm vi kiểm định: nhánh `feat/be-cashier-kds-b` + `feat/mobile-android-b` + `dev`.
+> Verify: backend `tsc --noEmit` xanh, suite `scripts/test_b_suite.ts` **19/19 PASS**, mobile `tsc --noEmit` xanh.
+> Các mục dưới đây là việc **chưa xong thật**, cần bổ sung (không sửa các claim đã ghi ở trên):
+
+| Mã | Việc còn lại | Liên quan | Tiêu chí xong |
+|---|---|---|---|
+| B-REM-001 | Endpoint `GET /api/orders/history/export` (xuất Excel) chưa tồn tại trong `order.routes.ts`, test suite cũng không cover | B-013, B-BE-002 | Có route + controller + test E2E; phân quyền MANAGER/ADMIN |
+| B-REM-002 | Toggle hết món local-first, gọi API fire-and-forget (`.catch` chỉ warn), không rollback UI khi API lỗi | B-011, `SoldOutScreen.tsx` | API lỗi → rollback switch + banner lỗi đỏ; sync ngược `sold_out:updated` đầy đủ |
+| B-REM-003 | CRUD Modifier Group local-only, chưa có backend `/api/menu/modifier-groups` (không endpoint nào tồn tại) | B-014, `ModifierDetailScreen.tsx` | Có endpoint CRUD thật + mobile gọi API, hoặc chốt scope local bằng văn bản |
+| B-REM-004 | Backend B chạy mock in-memory (`activeOrders`, `pendingSessions` array — mất dữ liệu khi restart) | B-BE-002 → B-BE-006 | Migrate orders/cashier/inventory sang Prisma (phối hợp C), hoặc xác nhận giữ mock cho demo |
+| B-REM-005 | Chưa có bằng chứng build APK / upload Play Internal Testing (mới có config `eas.json` + `app.json`) | B-016, B-017 | File APK + ảnh chụp Play Internal Testing đính kèm log |
+| B-REM-006 | Docs trên nhánh `main` vẫn trạng thái vàng 🟡 (do `main` chưa merge `dev`) | — | Chỉ sync bằng merge `dev`, không sửa tay trên `main` |
