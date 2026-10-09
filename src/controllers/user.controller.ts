@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
+import { sendStaffInviteMail } from '../utils/mailer';
 import { UserRole } from '@prisma/client';
 
 export const MANAGEABLE_ROLES: Array<{ role: UserRole; label: string; scope: string }> = [
@@ -119,7 +120,7 @@ export class UserController {
       // Check max users limit of tenant
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        include: { _count: { select: { users: true } } },
+        include: { _count: { select: { users: true } }, branding: true },
       });
 
       if (tenant && tenant._count.users >= tenant.maxUsers) {
@@ -155,6 +156,15 @@ export class UserController {
           createdAt: true,
         },
       });
+
+      // Gửi mail mời nhân viên (best-effort, không chặn response).
+      sendStaffInviteMail({
+        to: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        tenantName: tenant?.name || 'quán của bạn',
+        logoUrl: tenant?.branding?.logoUrl,
+      }).catch(() => undefined);
 
       return ApiResponse.success(res, newUser, 'Tạo tài khoản nhân viên thành công', 201);
     } catch (error: any) {
