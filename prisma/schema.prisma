@@ -61,6 +61,7 @@ enum OrderItemStatus {
   PREPARING
   READY
   SERVED
+  DONE
   CANCELLED
 }
 
@@ -246,6 +247,7 @@ model Area {
   branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   tables Table[]
 
+  @@unique([tenantId, branchId, name])
   @@index([tenantId, branchId])
 }
 
@@ -298,7 +300,7 @@ model MenuItem {
   id           String   @id @default(uuid())
   tenantId     String
   categoryId   String
-  code         String?
+  code         String
   name         String
   description  String?
   basePrice    Float
@@ -316,6 +318,7 @@ model MenuItem {
   recipeItems    Recipe[]
   orderItems     OrderItem[]
 
+  @@unique([tenantId, code])
   @@index([tenantId, categoryId, isActive])
   @@index([tenantId, isSoldOut])
 }
@@ -334,6 +337,7 @@ model ModifierGroup {
   options   ModifierOption[]
   menuItems ItemModifierGroup[]
 
+  @@unique([tenantId, name])
   @@index([tenantId])
 }
 
@@ -353,6 +357,7 @@ model ModifierOption {
   modifierGroup  ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
   orderModifiers OrderItemModifier[]
 
+  @@unique([modifierGroupId, name])
   @@index([tenantId, modifierGroupId])
 }
 
@@ -455,6 +460,7 @@ model OrderSession {
   orders       Order[]
   transactions PaymentTransaction[]
 
+  @@unique([branchId, sessionCode])
   @@index([tenantId, branchId, status])
   @@index([tenantId, tableId])
 }
@@ -477,6 +483,7 @@ model Order {
   session OrderSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   items   OrderItem[]
 
+  @@unique([branchId, orderCode])
   @@index([tenantId, branchId, status])
   @@index([createdAt])
 }
@@ -677,7 +684,24 @@ model WebhookConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
 
   @@index([tenantId, isActive])
+}
+
+model WebhookDelivery {
+  id              String   @id @default(uuid())
+  webhookConfigId String
+  event           String
+  payload         String // JSON summary payload
+  statusCode      Int?
+  responseBody    String?
+  isSuccess       Boolean  @default(false)
+  error           String?
+  createdAt       DateTime @default(now())
+
+  webhookConfig WebhookConfig @relation(fields: [webhookConfigId], references: [id], onDelete: Cascade)
+
+  @@index([webhookConfigId, createdAt])
 }

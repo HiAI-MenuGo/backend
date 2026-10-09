@@ -20,7 +20,18 @@ export class BrandingController {
 
       let branding = await prisma.tenantBranding.findUnique({
         where: { tenantId },
-        include: {
+        select: {
+          tenantId: true,
+          logoUrl: true,
+          bannerUrl: true,
+          primaryColor: true,
+          secondaryColor: true,
+          accentColor: true,
+          bankCode: true,
+          bankAccountNo: true,
+          bankAccountName: true,
+          wifiSsid: true,
+          footerText: true,
           tenant: {
             select: {
               name: true,
@@ -40,6 +51,80 @@ export class BrandingController {
       return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
     } catch (error: any) {
       logger.error('getBranding failed', { stack: error?.stack });
+      return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);
+    }
+  }
+
+  /**
+   * GET /api/branding/public?branchId=&tenantId=
+   * Endpoint public cho QR Menu và màn hình thanh toán tại bàn (không cần auth)
+   */
+  static async getPublicBranding(req: Request, res: Response) {
+    try {
+      const branchId = (req.query.branchId as string) || 'default-branch';
+      let branch = await prisma.branch.findUnique({
+        where: { id: branchId },
+      });
+
+      if (!branch && branchId === 'default-branch') {
+        branch = await prisma.branch.findFirst({
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+
+      const tenantId = (req.query.tenantId as string) || branch?.tenantId;
+
+      if (!tenantId) {
+        const tenant = await prisma.tenant.findFirst({ where: { status: 'ACTIVE' } });
+        if (!tenant) {
+          return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
+        }
+        const branding = await prisma.tenantBranding.findUnique({
+          where: { tenantId: tenant.id },
+          select: {
+            tenantId: true,
+            logoUrl: true,
+            bannerUrl: true,
+            primaryColor: true,
+            secondaryColor: true,
+            accentColor: true,
+            bankCode: true,
+            bankAccountNo: true,
+            bankAccountName: true,
+            wifiSsid: true,
+            footerText: true,
+            tenant: { select: { name: true, code: true, slug: true, status: true } },
+          },
+        });
+        return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+      }
+
+      const branding = await prisma.tenantBranding.findUnique({
+        where: { tenantId },
+        select: {
+          tenantId: true,
+          logoUrl: true,
+          bannerUrl: true,
+          primaryColor: true,
+          secondaryColor: true,
+          accentColor: true,
+          bankCode: true,
+          bankAccountNo: true,
+          bankAccountName: true,
+          wifiSsid: true,
+          footerText: true,
+          tenant: { select: { name: true, code: true, slug: true, status: true } },
+        },
+      });
+
+      if (!branding) {
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy cấu hình thương hiệu', 404);
+      }
+
+      return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+    } catch (error: any) {
+      logger.error('getPublicBranding failed', { stack: error?.stack });
       return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);
     }
   }

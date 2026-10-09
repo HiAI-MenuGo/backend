@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import { VietQRService } from '../services/payment/vietqr.service';
 import { emitToBranch, SOCKET_EVENTS } from '../socket';
@@ -129,17 +130,28 @@ export class CashierController {
     }
   }
 
-  static createVietQR(req: Request, res: Response) {
+  static async createVietQR(req: Request, res: Response) {
     try {
       const { sessionId, amount } = req.body;
-      const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
+      const branchId = (req.query.branchId as string) || (req.body.branchId as string) || (req as any).user?.branchId || 'default-branch';
 
       const session = pendingSessions.find((s) => s.sessionId === sessionId);
       const payAmount = Number(amount) || session?.total || 10000;
 
-      const qrResult = VietQRService.generateDynamicQR({
+      // Pattern Vòng 4: resolve branch -> tenant
+      let branch = await prisma.branch.findUnique({ where: { id: branchId } });
+      if (!branch && branchId === 'default-branch') {
+        branch = await prisma.branch.findFirst({
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+      const tenantId = branch?.tenantId || (req as any).user?.tenantId;
+
+      const qrResult = await VietQRService.generateDynamicQR({
         sessionId,
         amount: payAmount,
+        tenantId,
       });
 
       // Lưu lại tham chiếu giao dịch để đối soát Webhook
@@ -151,6 +163,9 @@ export class CashierController {
 
       return ApiResponse.success(res, qrResult, 'Sinh mã VietQR thành công');
     } catch (err: any) {
+      if (err.message === 'BANK_NOT_CONFIGURED') {
+        return ApiResponse.error(res, 'BANK_NOT_CONFIGURED', 'Tài khoản ngân hàng chưa được cấu hình', 400);
+      }
       return ApiResponse.error(res, 'CREATE_QR_ERROR', err.message, 500);
     }
   }

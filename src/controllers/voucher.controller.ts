@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 import { VoucherType } from '@prisma/client';
+import { VoucherQuoteService } from '../services/voucher-quote.service';
 
 export class VoucherController {
   /**
@@ -124,77 +125,23 @@ export class VoucherController {
         return ApiResponse.error(res, 'MISSING_FIELDS', 'Vui lòng cung cấp mã quán và mã giảm giá', 400);
       }
 
-      const formattedCode = String(code).trim().toUpperCase();
-      const now = new Date();
-
-      const voucher = await prisma.voucher.findUnique({
-        where: {
-          tenantId_code: {
-            tenantId,
-            code: formattedCode,
-          },
-        },
-      });
-
-      if (!voucher) {
-        return ApiResponse.error(res, 'INVALID_VOUCHER', 'Mã giảm giá không tồn tại', 404);
+      const quote = await VoucherQuoteService.validateVoucherForOrder(tenantId, code, subTotal);
+      if (!quote.valid) {
+        const statusCode = quote.errorCode === 'INVALID_VOUCHER' ? 404 : 400;
+        return ApiResponse.error(res, quote.errorCode || 'APPLY_ERROR', quote.message || 'Lỗi mã giảm giá', statusCode);
       }
-
-      if (!voucher.isActive) {
-        return ApiResponse.error(res, 'VOUCHER_INACTIVE', 'Mã giảm giá hiện đang bị tạm khóa', 400);
-      }
-
-      if (now < voucher.startDate) {
-        return ApiResponse.error(res, 'VOUCHER_NOT_STARTED', 'Mã giảm giá chưa đến ngày áp dụng', 400);
-      }
-
-      if (now > voucher.endDate) {
-        return ApiResponse.error(res, 'VOUCHER_EXPIRED', 'Mã giảm giá đã hết hạn sử dụng', 400);
-      }
-
-      if (voucher.usageLimit && voucher.usedCount >= voucher.usageLimit) {
-        return ApiResponse.error(res, 'VOUCHER_EXHAUSTED', 'Mã giảm giá đã hết lượt sử dụng', 400);
-      }
-
-      const numSubTotal = Number(subTotal);
-      if (numSubTotal < voucher.minOrderVal) {
-        return ApiResponse.error(
-          res,
-          'MIN_ORDER_NOT_MET',
-          `Đơn hàng cần đạt tối thiểu ${voucher.minOrderVal.toLocaleString('vi-VN')}đ để sử dụng mã này`,
-          400
-        );
-      }
-
-      // Calculate discount amount
-      let discountAmount = 0;
-      if (voucher.type === 'PERCENT') {
-        discountAmount = (numSubTotal * voucher.value) / 100;
-        if (voucher.maxDiscount && discountAmount > voucher.maxDiscount) {
-          discountAmount = voucher.maxDiscount;
-        }
-      } else {
-        discountAmount = voucher.value;
-      }
-
-      // Discount cannot exceed subTotal
-      if (discountAmount > numSubTotal) {
-        discountAmount = numSubTotal;
-      }
-
-      const finalAmount = Math.max(0, numSubTotal - discountAmount);
 
       return ApiResponse.success(
         res,
         {
-          code: voucher.code,
-          type: voucher.type,
-          value: voucher.value,
-          discountAmount,
-          finalAmount,
-          voucherId: voucher.id,
+          code: quote.code,
+          type: quote.type,
+          value: quote.value,
+          discountAmount: quote.discountAmount,
+          finalAmount: quote.finalAmount,
+          voucherId: quote.voucherId,
         },
-        'Áp dụng mã giảm giá thành công'
+        quote.message || 'Áp dụng mã giảm giá thành công'
       );
     } catch (error: any) {
       logger.error('applyVoucher failed', { stack: error?.stack });
@@ -218,7 +165,7 @@ export class VoucherController {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin quán', 401);
       }
       const { id } = req.params;
-      const { sessionId, orderId, customerId, discountAmount = 0, discount = 0 } = req.body;
+      const { sessionId, orderId, customerId, discountAmount = 0, discount = 0, subTotal } = req.body;
       const usageSessionId = sessionId || orderId;
       if (!usageSessionId) {
         return ApiResponse.error(res, 'MISSING_FIELDS', 'Vui lòng cung cấp sessionId của đơn áp voucher', 400);
@@ -227,9 +174,33 @@ export class VoucherController {
       if (!voucher) {
         return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy voucher', 404);
       }
-      if (voucher.usageLimit && voucher.usedCount >= voucher.usageLimit) {
-        return ApiResponse.error(res, 'VOUCHER_EXHAUSTED', 'Mã giảm giá đã hết lượt sử dụng', 400);
+
+      // Xác định subTotal hiện tại của đơn hàng để kiểm tra lại điều kiện
+      let currentSubTotal = Number(subTotal);
+      if (isNaN(currentSubTotal) || currentSubTotal <= 0) {
+        const session = await prisma.orderSession.findUnique({
+          where: { id: usageSessionId },
+          include: { orders: { select: { totalAmount: true } } },
+        });
+        currentSubTotal = session?.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || voucher.minOrderVal || 0;
       }
+
+      // Kiểm tra lại toàn diện điều kiện voucher (isActive, date, usageLimit, minOrder) qua VoucherQuoteService
+      const quote = await VoucherQuoteService.validateVoucherForOrder(
+        tenantId,
+        voucher.code,
+        currentSubTotal
+      );
+
+      if (!quote.valid) {
+        return ApiResponse.error(
+          res,
+          quote.errorCode || 'INVALID_VOUCHER',
+          quote.message || 'Mã giảm giá không hợp lệ hoặc đã hết hạn',
+          400
+        );
+      }
+
       const updated = await prisma.voucher.update({
         where: { id },
         data: { usedCount: { increment: 1 } },

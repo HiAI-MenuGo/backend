@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
@@ -78,8 +80,9 @@ export class ZReportController {
   }
 
   /**
-   * GET /api/z-report/export?format=pdf|excel&branchId=&startTime=
-   * Xuất báo cáo ca: excel = CSV tương thích Excel, pdf = HTML in được (fallback khi chưa có pdfkit).
+   * GET /api/z-report/export?format=pdf|excel|csv&branchId=&startTime=
+   * Xuất báo cáo ca native: excel = .xlsx (exceljs), pdf = .pdf (pdfkit),
+   * csv giữ tương thích cũ. Hỗ trợ đầy đủ tiếng Việt có dấu, nhúng font Unicode và branding nhà hàng.
    */
   static async exportReport(req: Request, res: Response) {
     try {
@@ -91,27 +94,148 @@ export class ZReportController {
       const format = String(req.query.format || 'excel').toLowerCase();
       const startTimeStr = req.query.startTime as string;
       const startTime = startTimeStr ? new Date(startTimeStr) : new Date(new Date().setHours(0, 0, 0, 0));
-      const preview = await ZReportService.calculateShiftPreview(tenantId, branchId, startTime);
-      if (format === 'excel' || format === 'csv') {
-        const rows = [
-          ['Chi tieu', 'Gia tri'],
-          ['Doanh thu tien mat', preview.cashRevenue ?? 0],
-          ['Doanh thu VietQR', preview.qrRevenue ?? 0],
-          ['Doanh thu the', preview.cardRevenue ?? 0],
-          ['Tong doanh thu', preview.totalRevenue ?? 0],
-          ['So don hoan thanh', preview.orderCount ?? 0],
-          ['So mon huy', preview.voidedCount ?? 0],
-          ['Giam gia voucher', preview.totalDiscount ?? 0],
+      
+      const [preview, tenant, branch] = await Promise.all([
+        ZReportService.calculateShiftPreview(tenantId, branchId, startTime),
+        prisma.tenant.findUnique({
+          where: { id: tenantId },
+          include: { branding: true },
+        }),
+        prisma.branch.findUnique({
+          where: { id: branchId },
+        }),
+      ]);
+
+      const restaurantName = tenant?.name || 'HiAI-MenuGo';
+      const branchName = branch?.name || '';
+      const branchAddress = branch?.address || '';
+      const fileBase = `z-report-${branchId}-${new Date().toISOString().slice(0, 10)}`;
+
+      const rows: Array<[string, number]> = [
+        ['Doanh thu tiền mặt', preview.cashRevenue ?? 0],
+        ['Doanh thu VietQR', preview.qrRevenue ?? 0],
+        ['Doanh thu thẻ', preview.cardRevenue ?? 0],
+        ['Tổng doanh thu', preview.totalRevenue ?? 0],
+        ['Số đơn hoàn thành', preview.orderCount ?? 0],
+        ['Số món hủy', preview.voidedCount ?? 0],
+        ['Giảm giá voucher', preview.totalDiscount ?? 0],
+      ];
+
+      if (format === 'excel' || format === 'xlsx') {
+        const ExcelJS = (await import('exceljs')).default;
+        const wb = new ExcelJS.Workbook();
+        wb.creator = restaurantName;
+        const ws = wb.addWorksheet('Báo Cáo Kết Ca');
+        ws.columns = [
+          { header: 'Chỉ tiêu', key: 'label', width: 28 },
+          { header: 'Giá trị', key: 'value', width: 22 },
         ];
-        const csv = '\uFEFF' + rows.map((r) => r.join(',')).join('\n');
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="z-report-${branchId}.csv"`);
-        return res.status(200).send(csv);
+        rows.forEach(([label, value]) => ws.addRow({ label, value }));
+        ws.getRow(1).font = { bold: true };
+        const buf = await wb.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.xlsx"`);
+        return res.status(200).send(Buffer.from(buf));
       }
-      // PDF: trả HTML tối giản để client in/screenshot thành PDF khổ 80mm.
-      const html = `<!doctype html><html><head><meta charset="utf-8"><style>@media print{@page{size:80mm auto;margin:4mm}body{width:72mm;font-family:monospace;font-size:11px;color:#000}}</style></head><body><h3>Z-REPORT</h3><p>Tong: ${preview.totalRevenue ?? 0}</p><p>Tien mat: ${preview.cashRevenue ?? 0}</p><p>VietQR: ${preview.qrRevenue ?? 0}</p><p>Don: ${preview.orderCount ?? 0} - Huy: ${preview.voidedCount ?? 0}</p></body></html>`;
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.status(200).send(html);
+
+      if (format === 'pdf') {
+        const PDFDocument = (await import('pdfkit')).default;
+        const doc = new PDFDocument({ size: [226, 600], margin: 12 });
+        const chunks: Buffer[] = [];
+        doc.on('data', (c: Buffer) => chunks.push(c));
+        const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+
+        // Fetch branding logo nếu có URL hợp lệ (timeout 5s, fallback text cũ nếu lỗi)
+        let logoBuffer: Buffer | null = null;
+        const logoUrl = tenant?.branding?.logoUrl;
+        if (logoUrl && (logoUrl.startsWith('http://') || logoUrl.startsWith('https://'))) {
+          try {
+            const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(5000) });
+            if (logoRes.ok) {
+              const arrayBuf = await logoRes.arrayBuffer();
+              logoBuffer = Buffer.from(arrayBuf);
+            }
+          } catch (logoErr: any) {
+            logger.warn(`[ZReport] Logo fetch failed, fallback to text: ${logoErr?.message}`);
+          }
+        }
+
+        // Đăng ký font DejaVu Sans tiếng Việt
+        const fontRegularPath = path.resolve(process.cwd(), 'assets/fonts/DejaVuSans.ttf');
+        const fontBoldPath = path.resolve(process.cwd(), 'assets/fonts/DejaVuSans-Bold.ttf');
+        const hasUnicodeFont = fs.existsSync(fontRegularPath) && fs.existsSync(fontBoldPath);
+
+        if (hasUnicodeFont) {
+          doc.registerFont('DejaVuSans', fontRegularPath);
+          doc.registerFont('DejaVuSans-Bold', fontBoldPath);
+          doc.font('DejaVuSans');
+        }
+
+        // Vẽ logo góc trái header (fit ~40x40, giữ tỉ lệ)
+        if (logoBuffer) {
+          try {
+            doc.image(logoBuffer, 12, 12, { fit: [40, 40] });
+          } catch (imgErr: any) {
+            logger.warn(`[ZReport] PDF doc.image error, fallback to text: ${imgErr?.message}`);
+            logoBuffer = null;
+          }
+        }
+
+        // Header nhà hàng & chi nhánh
+        if (hasUnicodeFont) {
+          doc.font('DejaVuSans-Bold').fontSize(11).text(restaurantName, { align: 'center' });
+          if (branchName) {
+            doc.font('DejaVuSans').fontSize(8).text(branchName, { align: 'center' });
+          }
+          if (branchAddress) {
+            doc.font('DejaVuSans').fontSize(7).text(branchAddress, { align: 'center' });
+          }
+          if (logoBuffer && doc.y < 56) {
+            doc.y = 56;
+          }
+          doc.moveDown(0.3);
+          doc.font('DejaVuSans-Bold').fontSize(10).text('BÁO CÁO KẾT CA (Z-REPORT)', { align: 'center' });
+          doc.font('DejaVuSans').fontSize(7).text('----------------------------------------------------', { align: 'center' });
+          doc.moveDown(0.4);
+
+          // Nội dung báo cáo
+          rows.forEach(([label, value]) => {
+            const formattedVal = Number(value).toLocaleString('vi-VN');
+            if (label === 'Tổng doanh thu') {
+              doc.moveDown(0.2);
+              doc.font('DejaVuSans-Bold').fontSize(9).text(`${label}: ${formattedVal} đ`);
+              doc.font('DejaVuSans').fontSize(8);
+              doc.moveDown(0.2);
+            } else {
+              const unit = label.includes('Số') ? '' : ' đ';
+              doc.font('DejaVuSans').fontSize(8).text(`${label}: ${formattedVal}${unit}`);
+            }
+          });
+
+          doc.moveDown(0.4);
+          doc.font('DejaVuSans').fontSize(7).text('----------------------------------------------------', { align: 'center' });
+          doc.fontSize(7).text(`Xuất lúc: ${new Date().toLocaleString('vi-VN')}`, { align: 'center' });
+        } else {
+          doc.fontSize(14).text('Z-REPORT', { align: 'center' });
+          doc.moveDown(0.5);
+          doc.fontSize(9);
+          rows.forEach(([label, value]) => doc.text(`${label}: ${Number(value).toLocaleString('vi-VN')}`));
+          doc.moveDown(0.5);
+          doc.text(`Xuat luc: ${new Date().toLocaleString('vi-VN')}`, { align: 'center' });
+        }
+
+        doc.end();
+        const pdf = await done;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`);
+        return res.status(200).send(pdf);
+      }
+
+      // CSV fallback tương thích cũ.
+      const csv = '\uFEFF' + [['Chỉ tiêu', 'Giá trị'], ...rows].map((r) => r.join(',')).join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
+      return res.status(200).send(csv);
     } catch (error: any) {
       logger.error('zreport export failed', { stack: error?.stack });
       return ApiResponse.error(res, 'EXPORT_ERROR', 'Lỗi xuất báo cáo kết ca', 500);

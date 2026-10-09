@@ -1,3 +1,5 @@
+import { prisma } from '../utils/prisma';
+import logger from '../utils/logger';
 import { emitToBranch, SOCKET_EVENTS } from '../socket';
 
 export interface OrderItemDetail {
@@ -7,10 +9,10 @@ export interface OrderItemDetail {
   price: number;
   note?: string;
   imageUrl?: string;
-  status?: 'PENDING' | 'PREPARING' | 'DONE';
+  status?: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'DONE' | 'CANCELLED';
 }
 
-export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'DONE';
+export type LiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DONE' | 'CANCELLED';
 
 export interface LiveOrder {
   id: string;
@@ -32,188 +34,421 @@ export interface LiveOrder {
   createdAt: string;
 }
 
-// Dữ liệu mẫu khởi tạo cho cửa hàng
-let activeOrders: LiveOrder[] = [
-  {
-    id: 'ord-101',
-    code: '#101',
-    time: '11:42',
-    orderType: 'DINE_IN',
-    status: 'PENDING',
-    tableId: 'tbl-02',
-    tableName: 'Bàn 02',
-    branchId: 'default-branch',
-    tenantId: 'default-tenant',
-    total: 125000,
-    paymentStatus: 'UNPAID',
-    customerName: 'Nguyễn Văn A',
-    note: 'Ít đường • Không lấy ống hút nhựa',
-    items: [
-      { id: 'item-1', name: 'Trà Đào Cam Sả', quantity: 2, price: 45000, note: '50% đường | 50% đá' },
-      { id: 'item-2', name: 'Cà Phê Muối', quantity: 1, price: 35000, note: 'Ít đá' },
-    ],
-    countdownSeconds: 420,
-    createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
-  },
-  {
-    id: 'ord-102',
-    code: '#102',
-    time: '11:48',
-    orderType: 'DINE_IN',
-    status: 'CONFIRMED',
-    tableId: 'tbl-05',
-    tableName: 'Bàn 05',
-    branchId: 'default-branch',
-    tenantId: 'default-tenant',
-    total: 90000,
-    paymentStatus: 'UNPAID',
-    customerName: 'Trần Thị B',
-    items: [
-      { id: 'item-3', name: 'Matcha Latte Đá', quantity: 2, price: 45000, note: '70% đường' },
-    ],
-    countdownSeconds: 300,
-    createdAt: new Date(Date.now() - 2 * 60000).toISOString(),
-  },
-  {
-    id: 'ord-103',
-    code: '#103',
-    time: '11:35',
-    orderType: 'TAKEAWAY',
-    status: 'DONE',
-    branchId: 'default-branch',
-    tenantId: 'default-tenant',
-    total: 55000,
-    paymentStatus: 'PAID',
-    paymentMethod: 'VIETQR',
-    customerName: 'Lê Hoàng C',
-    items: [
-      { id: 'item-4', name: 'Bạc Xỉu Sữa Tươi', quantity: 1, price: 35000 },
-      { id: 'item-5', name: 'Bánh Croissant Bơ Tỏi', quantity: 1, price: 20000 },
-    ],
-    countdownSeconds: 0,
-    createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
-  },
-];
+/**
+ * Helper phân giải branchId query thành record Branch trong DB.
+ * Chặn IDOR: lấy tenantId từ Branch làm source of truth.
+ * Hỗ trợ alias 'default-branch' để tương thích KDS/dev mode.
+ */
+async function resolveBranch(branchId: string) {
+  let branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+  });
 
-let orderHistory: LiveOrder[] = [
-  ...activeOrders.filter((o) => o.status === 'DONE'),
-];
+  if (!branch && branchId === 'default-branch') {
+    branch = await prisma.branch.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  if (!branch) {
+    const err = new Error('BRANCH_NOT_FOUND');
+    (err as any).statusCode = 404;
+    (err as any).errorCode = 'BRANCH_NOT_FOUND';
+    throw err;
+  }
+
+  return branch;
+}
+
+/**
+ * Adapter chuyển đổi Prisma Order (kèm items, modifiers, session, table, transactions)
+ * sang LiveOrder DTO mà giao diện KDS đang tiêu thụ.
+ */
+function mapPrismaOrderToLiveOrder(order: any): LiveOrder {
+  const createdAtDate = new Date(order.createdAt);
+  const timeStr = createdAtDate.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const session = order.session;
+  const table = session?.table;
+  const transactions = session?.transactions || [];
+  const paidTx = transactions.find((t: any) => t.status === 'PAID');
+
+  let countdownSeconds = 0;
+  if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
+    const elapsedSeconds = Math.floor((Date.now() - createdAtDate.getTime()) / 1000);
+    countdownSeconds = Math.max(0, 600 - elapsedSeconds);
+  }
+
+  const items: OrderItemDetail[] = (order.items || []).map((item: any) => {
+    const modNames = (item.modifiers || []).map((m: any) => m.modifierName).join(' | ');
+    let note = item.note || undefined;
+    if (modNames) {
+      note = note ? `${note} (${modNames})` : modNames;
+    }
+
+    return {
+      id: item.id,
+      name: item.itemName,
+      quantity: item.quantity,
+      price: item.unitPrice,
+      note,
+      imageUrl: item.menuItem?.imageUrl || undefined,
+      status: item.status,
+    };
+  });
+
+  return {
+    id: order.id,
+    code: order.orderCode,
+    time: timeStr,
+    orderType: order.orderType,
+    status: order.status,
+    items,
+    note: order.note || undefined,
+    total: order.totalAmount,
+    paymentStatus: paidTx ? 'PAID' : 'UNPAID',
+    paymentMethod: paidTx?.method || undefined,
+    customerName: session?.customer?.name || undefined,
+    tableId: table?.id || session?.tableId || undefined,
+    tableName: table?.name || undefined,
+    branchId: order.branchId,
+    tenantId: order.tenantId,
+    countdownSeconds,
+    createdAt: createdAtDate.toISOString(),
+  };
+}
 
 export class OrderService {
-  static getActiveOrders(branchId: string = 'default-branch', view?: string): LiveOrder[] {
-    return activeOrders.filter((o) => o.branchId === branchId);
+  /**
+   * Lấy danh sách đơn hàng active của chi nhánh từ Prisma.
+   * Lọc bỏ các đơn đã DONE hoặc CANCELLED (chuyển sang history).
+   */
+  static async getActiveOrders(branchId: string = 'default-branch', _view?: string): Promise<LiveOrder[]> {
+    const branch = await resolveBranch(branchId);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        branchId: branch.id,
+        tenantId: branch.tenantId,
+        status: {
+          notIn: ['DONE', 'CANCELLED'],
+        },
+      },
+      include: {
+        items: {
+          include: {
+            modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
+          },
+        },
+        session: {
+          include: {
+            table: true,
+            customer: true,
+            transactions: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return orders.map(mapPrismaOrderToLiveOrder);
   }
 
-  static getOrderById(orderId: string, branchId: string = 'default-branch'): LiveOrder | undefined {
-    return activeOrders.find((o) => o.id === orderId && o.branchId === branchId);
+  /**
+   * Lấy chi tiết đơn hàng theo ID và branchId.
+   */
+  static async getOrderById(orderId: string, branchId: string = 'default-branch'): Promise<LiveOrder | undefined> {
+    const branch = await resolveBranch(branchId);
+
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        branchId: branch.id,
+        tenantId: branch.tenantId,
+      },
+      include: {
+        items: {
+          include: {
+            modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
+          },
+        },
+        session: {
+          include: {
+            table: true,
+            customer: true,
+            transactions: true,
+          },
+        },
+      },
+    });
+
+    return order ? mapPrismaOrderToLiveOrder(order) : undefined;
   }
 
-  static updateOrderStatus(
+  /**
+   * Cập nhật trạng thái đơn hàng (order-level) xuống Prisma và bắn socket ORDER_UPDATED.
+   */
+  static async updateOrderStatus(
     orderId: string,
     status: LiveOrderStatus,
     branchId: string = 'default-branch'
-  ): LiveOrder {
-    const order = activeOrders.find((o) => o.id === orderId && o.branchId === branchId);
+  ): Promise<LiveOrder> {
+    const branch = await resolveBranch(branchId);
+
+    const existing = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        branchId: branch.id,
+        tenantId: branch.tenantId,
+      },
+    });
+
+    if (!existing) {
+      throw new Error('ORDER_NOT_FOUND');
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: status as any,
+        ...(status === 'DONE'
+          ? {
+              items: {
+                updateMany: {
+                  where: { status: { not: 'CANCELLED' } },
+                  data: { status: 'DONE' },
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        items: {
+          include: {
+            modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
+          },
+        },
+        session: {
+          include: {
+            table: true,
+            customer: true,
+            transactions: true,
+          },
+        },
+      },
+    });
+
+    const liveOrder = mapPrismaOrderToLiveOrder(updated);
+
+    try {
+      emitToBranch(branch.id, SOCKET_EVENTS.ORDER_UPDATED, {
+        orderId: liveOrder.id,
+        status: liveOrder.status,
+        updatedAt: new Date().toISOString(),
+        branchId: branch.id,
+      });
+    } catch (socketErr: any) {
+      logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
+    }
+
+    return liveOrder;
+  }
+
+  /**
+   * Cập nhật trạng thái từng món ăn (item-level) xuống Prisma và bắn socket ORDER_ITEM_STATUS.
+   */
+  static async updateItemStatus(
+    orderId: string,
+    itemId: string,
+    status: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'DONE' | 'CANCELLED',
+    branchId: string = 'default-branch'
+  ): Promise<OrderItemDetail> {
+    const branch = await resolveBranch(branchId);
+
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        branchId: branch.id,
+        tenantId: branch.tenantId,
+      },
+      include: {
+        items: true,
+      },
+    });
+
     if (!order) {
       throw new Error('ORDER_NOT_FOUND');
     }
 
-    order.status = status;
-    if (status === 'DONE') {
-      order.countdownSeconds = 0;
-      if (!orderHistory.some((h) => h.id === order.id)) {
-        orderHistory.unshift(order);
+    const item = order.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new Error('ITEM_NOT_FOUND');
+    }
+
+    const updatedItem = await prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        status: status as any,
+      },
+      include: {
+        modifiers: true,
+        menuItem: {
+          select: {
+            imageUrl: true,
+          },
+        },
+      },
+    });
+
+    try {
+      emitToBranch(branch.id, SOCKET_EVENTS.ORDER_ITEM_STATUS, {
+        orderId,
+        itemId,
+        status,
+        branchId: branch.id,
+      });
+    } catch (socketErr: any) {
+      logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
+    }
+
+    // Cascade: Auto-DONE order khi mon xong het (>= 1 DONE, tat ca thuoc DONE hoac CANCELLED)
+    if (order.status !== 'DONE' && order.status !== 'CANCELLED') {
+      const orderItems = await prisma.orderItem.findMany({
+        where: { orderId: order.id },
+        select: { status: true },
+      });
+
+      const allFinished =
+        orderItems.length > 0 &&
+        orderItems.every((it) => it.status === 'DONE' || it.status === 'CANCELLED');
+      const hasDone = orderItems.some((it) => it.status === 'DONE');
+
+      if (allFinished && hasDone) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'DONE' },
+        });
+
+        try {
+          emitToBranch(branch.id, SOCKET_EVENTS.ORDER_UPDATED, {
+            orderId: order.id,
+            status: 'DONE',
+            updatedAt: new Date().toISOString(),
+            branchId: branch.id,
+          });
+        } catch (socketErr: any) {
+          logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
+        }
       }
     }
 
-    // Phát tín hiệu Socket.IO đến các máy cùng chi nhánh
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_UPDATED, {
-      orderId: order.id,
-      status: order.status,
-      updatedAt: new Date().toISOString(),
-      branchId,
-    });
-
-    return order;
+    return {
+      id: updatedItem.id,
+      name: updatedItem.itemName,
+      quantity: updatedItem.quantity,
+      price: updatedItem.unitPrice,
+      note: updatedItem.note || undefined,
+      imageUrl: (updatedItem as any).menuItem?.imageUrl || undefined,
+      status: updatedItem.status as any,
+    };
   }
 
-  static updateItemStatus(
+  /**
+   * Hủy đơn hàng: đổi status thành CANCELLED (không xóa dòng trong DB) và bắn socket ORDER_VOIDED.
+   */
+  static async voidOrder(
     orderId: string,
-    itemId: string,
-    status: 'PENDING' | 'PREPARING' | 'DONE',
+    reason: string,
     branchId: string = 'default-branch'
-  ) {
-    const order = activeOrders.find((o) => o.id === orderId && o.branchId === branchId);
-    if (!order) throw new Error('ORDER_NOT_FOUND');
+  ): Promise<LiveOrder> {
+    const branch = await resolveBranch(branchId);
 
-    const item = order.items.find((i) => i.id === itemId);
-    if (!item) throw new Error('ITEM_NOT_FOUND');
-
-    item.status = status;
-
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_ITEM_STATUS, {
-      orderId,
-      itemId,
-      status,
-      branchId,
+    const existing = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        branchId: branch.id,
+        tenantId: branch.tenantId,
+      },
     });
 
-    return item;
-  }
-
-  static voidOrder(orderId: string, reason: string, branchId: string = 'default-branch'): LiveOrder {
-    const index = activeOrders.findIndex((o) => o.id === orderId && o.branchId === branchId);
-    if (index === -1) {
+    if (!existing) {
       throw new Error('ORDER_NOT_FOUND');
     }
 
-    const [voidedOrder] = activeOrders.splice(index, 1);
-
-    emitToBranch(branchId, SOCKET_EVENTS.ORDER_VOIDED, {
-      orderId: voidedOrder.id,
-      reason,
-      branchId,
-      voidedAt: new Date().toISOString(),
+    const voided = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELLED',
+        items: {
+          updateMany: {
+            where: {},
+            data: { status: 'CANCELLED' },
+          },
+        },
+      },
+      include: {
+        items: {
+          include: {
+            modifiers: true,
+            menuItem: {
+              select: {
+                imageUrl: true,
+              },
+            },
+          },
+        },
+        session: {
+          include: {
+            table: true,
+            customer: true,
+            transactions: true,
+          },
+        },
+      },
     });
 
-    return voidedOrder;
+    const liveOrder = mapPrismaOrderToLiveOrder(voided);
+
+    try {
+      emitToBranch(branch.id, SOCKET_EVENTS.ORDER_VOIDED, {
+        orderId: liveOrder.id,
+        reason,
+        branchId: branch.id,
+        voidedAt: new Date().toISOString(),
+      });
+    } catch (socketErr: any) {
+      logger.warn(`[OrderService] Socket emission error: ${socketErr.message}`);
+    }
+
+    return liveOrder;
   }
 
-  static createOrder(
-    data: Omit<LiveOrder, 'id' | 'code' | 'time' | 'status' | 'createdAt'>,
-    branchId: string = 'default-branch'
-  ): LiveOrder {
-    const newCode = `#${100 + activeOrders.length + orderHistory.length + 1}`;
-    const newOrder: LiveOrder = {
-      ...data,
-      id: `ord-${Date.now()}`,
-      code: newCode,
-      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      status: 'PENDING',
-      branchId: branchId || data.branchId || 'default-branch',
-      tenantId: data.tenantId || 'default-tenant',
-      createdAt: new Date().toISOString(),
-      countdownSeconds: 600,
-    };
-
-    activeOrders.unshift(newOrder);
-
-    // Phát tín hiệu có đơn mới cho KDS và Mobile
-    emitToBranch(newOrder.branchId, SOCKET_EVENTS.ORDER_NEW, {
-      orderId: newOrder.id,
-      orderNumber: newOrder.code,
-      tableId: newOrder.tableId,
-      tableName: newOrder.tableName,
-      totalAmount: newOrder.total,
-      itemCount: newOrder.items.reduce((s, i) => s + i.quantity, 0),
-      items: newOrder.items,
-      createdAt: newOrder.createdAt,
-    });
-
-    return newOrder;
-  }
-
-  static getOrderHistory(
+  /**
+   * Lấy lịch sử đơn hàng từ Prisma có phân trang và lọc theo khoảng thời gian/mã đơn.
+   */
+  static async getOrderHistory(
     branchId: string = 'default-branch',
     page: number = 1,
     limit: number = 20,
@@ -221,27 +456,86 @@ export class OrderService {
     startDate?: string,
     endDate?: string
   ) {
-    let list = [...orderHistory];
+    const branch = await resolveBranch(branchId);
 
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (o) =>
-          o.code.toLowerCase().includes(q) ||
-          (o.tableName && o.tableName.toLowerCase().includes(q)) ||
-          (o.customerName && o.customerName.toLowerCase().includes(q))
-      );
+    const where: any = {
+      branchId: branch.id,
+      tenantId: branch.tenantId,
+    };
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        {
+          orderCode: {
+            contains: q,
+            mode: 'insensitive',
+          },
+        },
+        {
+          session: {
+            table: {
+              code: {
+                contains: q,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      ];
     }
 
-    const total = list.length;
-    const totalPages = Math.ceil(total / limit) || 1;
-    const startIndex = (page - 1) * limit;
-    const paginatedOrders = list.slice(startIndex, startIndex + limit);
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        where.createdAt.lte = new Date(endDate);
+      }
+    }
+
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.max(1, limit);
+    const skip = (safePage - 1) * safeLimit;
+
+    const [total, orders] = await Promise.all([
+      prisma.order.count({ where }),
+      prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              modifiers: true,
+              menuItem: {
+                select: {
+                  imageUrl: true,
+                },
+              },
+            },
+          },
+          session: {
+            include: {
+              table: true,
+              customer: true,
+              transactions: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: safeLimit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / safeLimit) || 1;
 
     return {
-      orders: paginatedOrders,
+      orders: orders.map(mapPrismaOrderToLiveOrder),
       total,
-      page,
+      page: safePage,
       totalPages,
     };
   }

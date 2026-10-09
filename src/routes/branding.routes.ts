@@ -24,6 +24,7 @@ const updateBrandingSchema = z.object({
 const router = Router();
 
 // Public endpoint để client xem branding của quán (QR Menu, POS)
+router.get('/public', BrandingController.getPublicBranding);
 router.get('/:tenantId', BrandingController.getBranding);
 
 // Admin endpoints
