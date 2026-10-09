@@ -1,379 +1,301 @@
 # 📱 Workflow Thành Viên A — iOS Developer & Backend Core
 
-> **Người phụ trách:** Trần Hoàng Đạt (Thành viên A)
-> **Nền tảng:** Mobile App iOS (Expo / React Native) + Backend Core API (Express 5 / TypeScript)
-> **Thư mục làm việc:** `mobile/` và `backend/`
-> **Nhánh Git:**
-> - Mobile Repo (`mobile.git`): `feat/mobile-ios-a` ➔ PR vào `dev`
-> - Backend Repo (`backend.git`): `feat/be-auth-menu-a` ➔ PR vào `dev`
+> **Người phụ trách:** Trần Hoàng Đạt (Thành viên A)  
+> **Nền tảng:** Mobile App iOS (Expo / React Native) + Backend Core API (Express 5 / TypeScript)  
+> **Thư mục làm việc:** `mobile/` và `backend/`  
+> **Nhánh Git phụ trách:**
+> - Mobile Repo (`mobile.git`): `feat/mobile-ios-a` ➔ Merge vào `dev` (Commit `42b7d84` qua PR #5)
+> - Backend Repo (`backend.git`): `feat/be-auth-menu-a` ➔ Merge vào `dev` (Commit `c8abdae` qua PR #2)
+>
+> ⚠️ **TỔNG KẾT TIẾN ĐỘ THỰC TẾ (Audit ngày 09/10/2026):**  
+> - **Tiến độ hoàn thành:** **~18%** (Đã làm: Khung Auth JWT Backend + AuthGate & Login Mobile; **Chưa làm:** 11/15 task Mobile vẫn chạy Mock Data, 4/5 API Backend chưa được viết).  
+> - **Lịch sử commit:** Hoạt động cuối ghi nhận vào **30/09/2026**. Sau ngày 30/09/2026 không có thêm commit phát triển tính năng nào từ Thành viên A.
 
 ---
 
-## 🎯 Phạm Vi Công Việc
+## 🎯 Phạm Vi Công Việc & Mục Tiêu
 
 Thành viên A chịu trách nhiệm phối hợp giữa **Mobile App iOS** và **Backend Core APIs**:
 
 ### 1. Mobile App iOS (`mobile/`)
-1. **App Shell & Foundation** — Cấu trúc khung ứng dụng, điều hướng không dùng React Navigation, SafeArea và Design Tokens
-2. **Trải nghiệm khách hàng / Nhân viên** — HomeScreen (Doanh thu & Shortcuts), RevenueScreen, NotificationScreen
-3. **Tính năng Gọi món tại bàn (POS Mobile)** — OrderScreen, ItemOptionsScreen, MenuItemFormScreen
-4. **Cài đặt & Hồ sơ** — SettingsScreen
-5. **Kiểm thử iOS** — Kiểm tra trên Simulator iOS (iPhone SE, iPhone 14 Pro, iPhone 15 Pro Max) với Notch, Dynamic Island, Safe Area insets.
+1. **App Shell & Foundation:** Cấu trúc khung ứng dụng, SafeArea, Design Tokens, Auth Gate và lưu trữ phiên an toàn (`expo-secure-store`).
+2. **Màn hình phía Nhân viên:** HomeScreen (Tổng quan kinh doanh & Phím tắt), RevenueScreen (Báo cáo doanh thu), NotificationScreen (Thông báo realtime).
+3. **Nghiệp vụ Gọi món POS:** OrderScreen (Menu đặt món), ItemOptionsScreen (Chọn topping/đường/đá), MenuItemFormScreen (Thêm/sửa món ăn).
+4. **Cài đặt & Hồ sơ:** SettingsScreen (Xem hồ sơ, đổi mật khẩu, đăng xuất).
+5. **Kiểm thử & Đóng gói iOS:** Kiểm thử trên Simulator iOS (iPhone SE, 14 Pro, 15 Pro Max) và cấu hình EAS Build iOS.
 
-### 2. Backend API (`backend/`) — Phụ trách các module Core:
-1. **Auth & JWT System**: Đăng nhập, refresh token rotation, me, change-password, authMiddleware, role guard (`/api/auth/*`).
-2. **Menu & Modifiers CRUD**: Quản lý danh mục, món ăn, tùy chọn đường/đá/size/topping (`/api/menu/*`).
-3. **Session & Order Placement**: Khởi tạo session bàn, nhận payload gọi món từ Mobile/Web QR (`/api/sessions/:tableId/order`).
-4. **Analytics Overview**: Dashboard doanh thu ngày, top món bán chạy (`/api/analytics/*`).
-5. **Cloudinary Upload Service**: Upload hình ảnh món ăn, logo nhà hàng (`/api/upload/image`).
-
----
-
-## 📁 Files & Màn Hình Phụ Trách
-
-### Mobile (`mobile/`)
-| File | Mô tả | Trạng thái |
-|------|--------|------------|
-| `mobile/App.tsx` | Root Shell, SafeArea Provider, CartLogic, Custom Tab Navigation | 🟢 Đã nối AuthGate + Login (30/09/2026) |
-| `mobile/src/theme/index.ts` | Design Tokens: Colors, Radii, Shadows (A quản lý) | 🟢 Đã tạo mới (30/09/2026) |
-| `mobile/src/screens/LoginScreen.tsx` | Đăng nhập nhân viên + SecureStore | 🟢 Đã tạo mới (30/09/2026) |
-| `mobile/src/data/authStore.ts` | Zustand Auth: user/tokens/login/logout/loadFromStorage | 🟢 Đã tạo mới (30/09/2026) |
-| `mobile/src/components/BottomNav.tsx` | Floating Bottom Dock 5 tabs + Badge giỏ hàng | 🟡 Cần kết nối API |
-| `mobile/src/screens/HomeScreen.tsx` | Trang chủ: Doanh thu, Shortcuts, Món bán chạy | 🟡 Cần kết nối API |
-| `mobile/src/screens/RevenueScreen.tsx` | Báo cáo doanh thu: Biểu đồ ngày/tháng/năm, giao dịch | 🟡 Cần kết nối API |
-| `mobile/src/screens/NotificationScreen.tsx` | Thông báo realtime: Filter loại, đánh dấu đã đọc | 🟡 Cần kết nối Socket.IO |
-| `mobile/src/screens/SettingsScreen.tsx` | Hồ sơ nhân viên, Cài đặt âm thanh, Đăng xuất | 🟡 Cần kết nối API |
-| `mobile/src/screens/OrderScreen.tsx` | Gọi món: Grid menu, Giỏ hàng, Xác nhận đơn, thành công | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/ItemOptionsScreen.tsx` | Chọn tùy chỉnh: Đường/Đá/Size/Topping, Stepper, Ghi chú | 🟡 Cần kết nối API |
-| `mobile/src/screens/operations/MenuItemFormScreen.tsx` | Thêm/sửa món: Form, Image Picker, Modifier CRUD | 🟡 Cần kết nối API |
-| `mobile/src/data/menuStore.ts` | Zustand Store: CRUD Thực đơn, Danh mục | 🟡 Cần kết nối API |
-| `mobile/src/types/index.ts` | TypeScript interfaces toàn bộ project mobile | 🟢 Dùng chung, không xung đột |
-| `mobile/src/theme/index.ts` | Design Tokens: Colors, Radii, Shadows | 🟢 Dùng chung, không xung đột |
-
-### Backend (`backend/`)
-| File | Mô tả | Trạng thái |
-|------|--------|------------|
-| `backend/src/controllers/auth.controller.ts` | Xử lý login, refresh token, get me, đổi mật khẩu | 🟢 Đã hoàn thành (30/09/2026, in-memory chờ Prisma của C) |
-| `backend/src/services/auth.service.ts` | Nghiệp vụ JWT thuần (15m access, 7d refresh HttpOnly, token reuse detection) | 🟢 Đã hoàn thành (30/09/2026) |
-| `backend/src/middlewares/auth.middleware.ts` | Xác thực JWT, inject `req.user`, guard phân quyền `requireRole` | 🟢 Đã hoàn thành (30/09/2026) |
-| `backend/src/routes/auth.routes.ts` | Routes `/api/auth/*` (login/refresh/me/change-password/logout) | 🟢 Đã tạo mới (30/09/2026) |
-| `backend/src/controllers/menu.controller.ts` | CRUD menu items, categories, modifier groups | 🟡 Cần hoàn thiện |
-| `backend/src/services/menu.service.ts` | Nghiệp vụ menu, query lọc theo tenantId & branchId | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/session.controller.ts` | Tạo đơn hàng mới từ bàn, session init | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/analytics.controller.ts` | Tổng quan doanh thu hôm nay, tăng trưởng | 🟡 Cần hoàn thiện |
-| `backend/src/controllers/upload.controller.ts` | Upload hình ảnh món ăn qua Cloudinary | 🟡 Cần hoàn thiện |
-
+### 2. Backend API (`backend/`)
+1. **Auth & JWT System (`/api/auth/*`):** Đăng nhập, refresh token rotation, me, change-password, authMiddleware, role guard.
+2. **Menu & Modifiers CRUD (`/api/menu/*`):** Quản lý danh mục, món ăn, nhóm tùy chọn đường/đá/size/topping.
+3. **Session & Gọi món (`/api/sessions/:tableId/order`):** Tiếp nhận đơn gọi món tại bàn, cập nhật bàn, broadcast socket `order:new`.
+4. **Analytics Overview (`/api/analytics/*`):** Thống kê doanh thu ngày, số đơn, top món bán chạy để cấp cho mobile.
+5. **Cloudinary Upload Service (`/api/upload/image`):** Upload hình ảnh món ăn.
 
 ---
 
-## 📋 Danh Sách Task Chi Tiết
+## 📁 Bảng Tổng Hợp Trạng Thái Thực Tế
 
-### 🏗️ GIAI ĐOẠN 1 — Foundation & App Shell (Tuần 1)
+### 📱 Phía Mobile App (`mobile/`)
+| File / Màn hình | Nhiệm vụ chính | Trạng thái thực tế | Chi tiết Đã làm / Chưa làm |
+|---|---|:---:|---|
+| `mobile/App.tsx` | Root Shell, SafeArea, AuthGate, CartLogic | 🟢 Đã hoàn thành | **Đã làm:** Bọc `AuthGate`, điều hướng `LoginScreen` khi chưa đăng nhập (Commit `42b7d84`). |
+| `mobile/src/theme/index.ts` | Design Tokens: Colors, Radii, Shadows | 🟢 Đã hoàn thành | **Đã làm:** Khởi tạo đầy đủ tokens chuẩn F&B (Commit `42b7d84`). |
+| `mobile/src/screens/LoginScreen.tsx` | Màn hình Đăng nhập nhân viên | 🟢 Đã hoàn thành | **Đã làm:** Giao diện đăng nhập, gọi API auth, lưu token vào SecureStore (Commit `42b7d84`). |
+| `mobile/src/data/authStore.ts` | Zustand Store: Auth & Tokens | 🟢 Đã hoàn thành | **Đã làm:** Quản lý state đăng nhập, nạp token từ `expo-secure-store` (Commit `42b7d84`). |
+| `mobile/src/services/api.ts` | Cấu hình Axios & Interceptor | 🟡 Hoàn thành 1 phần | **Đã làm:** Axios instance + gắn JWT token.<br>🔴 **Chưa làm:** Chưa có các hàm gọi API Menu, Analytics, Session Order. |
+| `mobile/src/services/auth.service.ts` | Service Auth phía client | 🟢 Đã hoàn thành | **Đã làm:** `login()`, `refreshToken()`, `getProfile()` (Commit `42b7d84`). |
+| `mobile/src/services/menu.service.ts` | Service kết nối Menu API | 🔴 Chưa thực hiện | **Chưa có file.** Chưa viết layer gọi API thực đơn. |
+| `mobile/src/data/menuStore.ts` | Zustand Menu Store | 🔴 Chưa hoàn thành | **Chưa làm:** Vẫn dùng 100% `mockMenuItems` trong bộ nhớ RAM, chưa nối API thực, thiếu state `loading`/`error`. |
+| `mobile/src/screens/HomeScreen.tsx` | Trang chủ Dashboard | 🔴 Chưa hoàn thành | **Chưa làm:** 100% dữ liệu cứng hardcode (không có useEffect, không gọi API, không pull-to-refresh). Phím tắt "Đang chờ" gọi nhầm tab `tables`. |
+| `mobile/src/screens/RevenueScreen.tsx` | Báo cáo doanh thu & biểu đồ | 🔴 Chưa hoàn thành | **Chưa làm:** Doanh thu tính toán bằng công thức ảo `selectedDay * 170000 % 2200000`. Chưa gọi API Analytics, chưa có Haptics hay spring animation. |
+| `mobile/src/screens/NotificationScreen.tsx` | Thông báo realtime | 🔴 Chưa hoàn thành | **Chưa làm:** Vẫn đọc từ `mockNotifications`, chưa lắng nghe sự kiện Socket.IO `order:new` hay `payment:completed`. |
+| `mobile/src/screens/OrderScreen.tsx` | Màn hình gọi món POS | 🔴 Chưa hoàn thành | **Chưa làm:** Dữ liệu món lấy từ mock; nút "Xác nhận đơn" chỉ xử lý state local, không gọi `POST /api/sessions/:tableId/order`. |
+| `mobile/src/screens/operations/ItemOptionsScreen.tsx` | Chọn đường/đá/size/topping | 🟡 Hoàn thành 70% | **Đã làm:** Giao diện chọn topping và tính tổng đơn giá.<br>🔴 **Chưa làm:** Thiếu preview realtime `"45k + 10k = 55k"` và animation scale. |
+| `mobile/src/screens/operations/MenuItemFormScreen.tsx` | Thêm / Sửa món ăn | 🔴 Chưa hoàn thành | **Chưa làm:** Không gọi API backend, không tích hợp Cloudinary upload, chỉ lưu tạm vào store in-memory. |
+| `mobile/src/screens/SettingsScreen.tsx` | Hồ sơ cá nhân & Cài đặt | 🟡 Hoàn thành 30% | **Đã làm:** UI form hồ sơ.<br>🔴 **Chưa làm:** Chưa gọi `GET /api/auth/me`, chưa có API đổi mật khẩu; nút Đăng xuất chỉ hiện Alert mà không xóa session. |
+| `mobile/docs/TEST_iOS.md` | Báo cáo kiểm thử iOS | 🔴 Chưa thực hiện | **Chưa có file.** Chưa có kết quả test trên Simulator iPhone SE/14 Pro/15 Pro Max. |
+| `mobile/eas.json` | Cấu hình build EAS | 🟡 Hoàn thành 1 phần | File do Thành viên B tạo cho Android; Thành viên A chưa cấu hình profile iOS và chưa test TestFlight. |
+
+---
+
+### ⚙️ Phía Backend Core APIs (`backend/`)
+| File / Module | Nhiệm vụ chính | Trạng thái thực tế | Chi tiết Đã làm / Chưa làm |
+|---|---|:---:|---|
+| `backend/src/controllers/auth.controller.ts`<br>`backend/src/services/auth.service.ts`<br>`backend/src/middlewares/auth.middleware.ts`<br>`backend/src/routes/auth.routes.ts` | Xác thực Auth & JWT thuần | 🟢 Đã hoàn thành ban đầu | **Đã làm:** Viết đầy đủ logic JWT thuần (access 15m, refresh 7d, rotation, role-guard) ở Commit `c8abdae`.<br>*(Lưu ý: Bản ban đầu dùng in-memory mock, sau đó Thành viên C đã refactor nối vào Prisma DB).* |
+| `backend/src/controllers/menu.controller.ts`<br>`backend/src/services/menu.service.ts`<br>`backend/src/routes/menu.routes.ts` | Menu & Modifiers API | 🔴 Thành viên A chưa làm | **Chưa làm:** A không tạo module này. (Thành viên B và C đã phải tự tạo tạm một phần để kịp tiến độ frontend/mobile của họ). |
+| `backend/src/controllers/session.controller.ts`<br>`backend/src/routes/session.routes.ts` | Đặt món tại bàn & Bắn Socket | 🔴 Thành viên A chưa làm | **Chưa làm:** A không tạo module này. (Thành viên B & C đã phải tự viết `order.controller.ts` thay thế). |
+| `backend/src/controllers/analytics.controller.ts`<br>`backend/src/services/analytics.service.ts`<br>`backend/src/routes/analytics.routes.ts` | Thống kê doanh thu & Dashboard | 🔴 Thành viên A chưa làm | **Chưa làm:** A hoàn toàn bỏ trống module này. (Thành viên C đã phải nhảy vào viết API Analytics trên branch `feat/be-admin-report-c` commit `20e6454`). |
+| `backend/src/controllers/upload.controller.ts`<br>`backend/src/routes/upload.routes.ts` | Upload ảnh Cloudinary | 🔴 Thành viên A chưa làm | **Chưa làm:** Hoàn toàn chưa có controller hay route upload ảnh. |
+
+---
+
+## 📋 Chi Tiết Từng Task: Đã Làm, Chưa Làm & Việc Cần Làm Tiếp Theo
+
+### 🏗️ GIAI ĐOẠN 1 — Foundation & App Shell
 
 #### Task A-001: Tách Mock Data — Chuẩn bị layer kết nối API
-- **Trạng thái:** 🟡 Hoàn thành một phần (30/09/2026) — xong `services/api.ts` (axios instance + interceptor JWT + auth endpoints), `services/auth.service.ts`. Còn lại: `services/menu.service.ts` + refactor `menuStore.ts` sang API thực (sẽ làm ở Cặp 2).
-- **File:** `mobile/src/data/mockData.ts`, `mobile/src/data/menuStore.ts`
-- **Việc làm:**
-  1. Tạo file `mobile/src/services/api.ts` — cấu hình `axios` instance với `baseURL` từ biến môi trường (`.env`), interceptor tự động gắn JWT token vào header.
-  2. Tạo file `mobile/src/services/auth.service.ts` — hàm `login()`, `refreshToken()`, `getProfile()`.
-  3. Tạo file `mobile/src/services/menu.service.ts` — hàm `getMenuItems()`, `createMenuItem()`, `updateMenuItem()`, `deleteMenuItem()`.
-  4. Refactor `menuStore.ts`: thay `mockMenuItems` thành gọi API thực, bổ sung state `loading` và `error`.
-- **Định nghĩa hoàn thành:** `useMenuStore` load được dữ liệu từ backend `GET /api/menu/items`. Fallback về mock nếu API lỗi.
+- **Trạng thái:** 🟡 Hoàn thành 50%
+- **Đã làm (Commit `42b7d84`):**
+  - Tạo `mobile/src/services/api.ts` thiết lập Axios instance kèm interceptor tự động gắn `Authorization: Bearer <token>`.
+  - Tạo `mobile/src/services/auth.service.ts` chứa các hàm `login()`, `refreshToken()`, `getProfile()`.
+- **Chưa làm (Tồn đọng):**
+  - Chưa tạo `mobile/src/services/menu.service.ts` (`getMenuItems()`, `createMenuItem()`, `updateMenuItem()`, `deleteMenuItem()`).
+  - Chưa refactor `mobile/src/data/menuStore.ts`: Vẫn đang import trực tiếp `mockMenuItems` tĩnh, chưa có state `loading: boolean`, `error: string | null`, và hàm `fetchItems()`.
+- **Hành động cần làm tiếp theo:**
+  1. Viết `menu.service.ts` gọi `GET /api/menu/items`.
+  2. Bổ sung `fetchItems: async () => void`, `isLoading`, `error` vào `menuStore.ts`. Fallback về mock data nếu mất mạng.
+
+---
 
 #### Task A-002: Auth Flow — Đăng nhập & Lưu phiên
-- **Trạng thái:** 🟡 Xong 3/4 (30/09/2026) — xong `authStore.ts` + `LoginScreen.tsx` + `App.tsx AuthGate` + `expo-secure-store`; còn lại nối nút Đăng xuất ở `SettingsScreen.tsx`.
-- **File:** `mobile/App.tsx`, `mobile/src/screens/SettingsScreen.tsx`
-- **Việc làm:**
-  1. Cài thêm `expo-secure-store` để lưu JWT Access Token và Refresh Token.
-  2. Tạo `mobile/src/data/authStore.ts` (Zustand) với state: `user`, `accessToken`, `isAuthenticated`, `login()`, `logout()`, `loadFromStorage()`.
-  3. Bọc `App.tsx` bằng màn hình `LoginScreen.tsx` nếu chưa đăng nhập. Sau khi login thành công, điều hướng sang `MainApp`.
-  4. Cập nhật `SettingsScreen.tsx` nút **Đăng xuất** để gọi `authStore.logout()`, xóa token, quay về màn hình Login.
-- **Định nghĩa hoàn thành:** Mở app khi chưa login thì vào màn hình Đăng nhập; sau khi login lưu token, mở lại app vẫn giữ phiên cho đến khi đăng xuất.
+- **Trạng thái:** 🟡 Hoàn thành 80%
+- **Đã làm (Commit `42b7d84`):**
+  - Cài đặt thư viện `expo-secure-store`.
+  - Viết `mobile/src/data/authStore.ts` quản lý token an toàn qua SecureStore.
+  - Viết `mobile/src/screens/LoginScreen.tsx` hỗ trợ đăng nhập email/mật khẩu và chọn vai trò demo.
+  - Bọc `AuthGate` ở `mobile/App.tsx`, kiểm tra trạng thái đăng nhập khi mở app.
+- **Chưa làm (Tồn đọng):**
+  - Nút **Đăng xuất** trong `mobile/src/screens/SettingsScreen.tsx` chưa gọi `useAuthStore.getState().logout()`. Khi bấm đăng xuất hiện tại chỉ hiển thị `Alert.alert` rồi giữ nguyên tài khoản và màn hình.
+- **Hành động cần làm tiếp theo:**
+  - Import `useAuthStore` vào `SettingsScreen.tsx`, cập nhật hàm `handleConfirmLogout` gọi `logout()` để xóa SecureStore và tự động chuyển về màn hình `LoginScreen`.
+
+---
 
 #### Task A-003: iOS Safe Area & Safe Zone Testing
-- **File:** `mobile/App.tsx`, tất cả Screens có Header hoặc Dock
-- **Việc làm:**
-  1. Kiểm tra `dynamicTop = Math.max(insets.top, 44)` trên iPhone với Dynamic Island.
-  2. Kiểm tra `dynamicTop = Math.max(insets.top, 20)` trên iPhone SE không có Notch.
-  3. Kiểm tra Floating Dock không bị che bởi Home Indicator trên tất cả model iPhone.
-  4. Ghi lại kết quả test dưới dạng checklist trong file `docs/TEST_iOS.md`.
-- **Định nghĩa hoàn thành:** Tất cả màn hình hiển thị đúng trên Simulator iPhone SE, iPhone 14 Pro, iPhone 15 Pro Max.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Chưa tạo file checklist kiểm thử `docs/TEST_iOS.md`.
+  - Chưa kiểm tra thực tế hành vi Floating Dock với Dynamic Island (iPhone 14/15 Pro) và Home Indicator.
+- **Hành động cần làm tiếp theo:**
+  - Chạy app trên Simulator iOS (iPhone SE, iPhone 15 Pro), chụp màn hình kiểm tra Safe Area insets, ghi lại biên bản trong `docs/TEST_iOS.md`.
 
 ---
 
-### 🏠 GIAI ĐOẠN 2 — HomeScreen & Dashboard (Tuần 1-2)
+### 🏠 GIAI ĐOẠN 2 — HomeScreen & Dashboard
 
 #### Task A-004: HomeScreen — Kết nối API dữ liệu thực
-- **File:** `mobile/src/screens/HomeScreen.tsx`
-- **API cần dùng:**
-  ```
-  GET /api/analytics/today-overview
-  Response: { revenue: number, orderCount: number, pendingOrders: number, pendingPayment: number, growth: number, topItems: MenuItem[] }
-  ```
-- **Việc làm:**
-  1. Thêm state `loading`, `todayData` vào `HomeScreen`.
-  2. `useEffect` gọi API khi mount, hiển thị skeleton placeholder khi đang tải.
-  3. Hiển thị dữ liệu thực: Doanh thu hôm nay, số đơn hàng, top món bán chạy 4 cái.
-  4. Pull-to-refresh bằng `RefreshControl` trên `ScrollView`.
-  5. Xử lý trường hợp lỗi API: hiển thị toast và giữ dữ liệu cũ nếu có cache.
-- **Định nghĩa hoàn thành:** HomeScreen hiển thị dữ liệu thực từ API và tự động làm mới khi vuốt xuống.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Màn hình `mobile/src/screens/HomeScreen.tsx` đang chứa 100% số liệu hardcoded (24.500.000đ, 48 đơn, 6 đơn chờ...).
+  - Không có hook `useEffect` nào để gọi API `GET /api/analytics/today-overview`.
+  - Thiếu skeleton placeholder khi tải dữ liệu.
+  - Thiếu cơ chế Pull-to-refresh (`RefreshControl`) để nhân viên làm mới số liệu.
+- **Hành động cần làm tiếp theo:**
+  - Thêm state `todayData`, `isLoading`, `onRefresh`.
+  - Gọi API overview khi mount, hiển thị dữ liệu thật lên các card chỉ số và danh sách Top món bán chạy.
+
+---
 
 #### Task A-005: HomeScreen — Chuyển hướng Navigation từ Shortcuts
-- **File:** `mobile/src/screens/HomeScreen.tsx`
-- **Việc làm:**
-  1. Thẻ `6 đơn Đang chờ` → `onNavigate('order', 'orders')` (jump thẳng vào tab Đơn hàng Live).
-  2. Thẻ `3 đơn Chờ thanh toán` → `onNavigate('order', 'cashier')` (jump thẳng vào Thu ngân).
-  3. Thẻ `Đơn hoàn thành` → `onNavigate('order', 'history')`.
-  4. Nút **Tạo Order Món** → `onNavigate('order', 'order')`.
-  5. Nút **Xem Báo Cáo** → `onNavigate('revenue')`.
-- **Định nghĩa hoàn thành:** Mọi shortcut trên HomeScreen dẫn đúng đến màn hình tương ứng.
+- **Trạng thái:** 🟡 Hoàn thành 50%
+- **Đã làm:**
+  - Đã có props `onNavigate` và gán sự kiện cho các card phím tắt.
+- **Chưa làm (Tồn đọng):**
+  - Shortcut "6 đơn Đang chờ" đang trỏ nhầm về `onNavigate('order', 'tables')` thay vì `'orders'`.
+  - Số lượng đơn hiển thị trên shortcut chưa phản ánh đúng số đơn thực từ KDS.
+- **Hành động cần làm tiếp theo:**
+  - Sửa lại đích đến của shortcut Đang chờ sang `'orders'`. Kết nối badge số lượng với `historyStore` hoặc API live orders.
 
 ---
 
-### 📊 GIAI ĐOẠN 3 — RevenueScreen & Analytics (Tuần 2)
+### 📊 GIAI ĐOẠN 3 — RevenueScreen & Analytics
 
 #### Task A-006: RevenueScreen — Kết nối API Analytics
-- **File:** `mobile/src/screens/RevenueScreen.tsx`
-- **API cần dùng:**
-  ```
-  GET /api/analytics/revenue?timeframe=day&date=2026-09-29
-  GET /api/analytics/revenue?timeframe=month&month=9&year=2026
-  GET /api/analytics/revenue?timeframe=year&year=2026
-  Response: RevenueData (khớp interface đã có trong types/index.ts)
-  ```
-- **Việc làm:**
-  1. Thay `getComputedRevenue()` hiện đang tính mock thành gọi API thực.
-  2. Khi người dùng đổi timeframe hoặc ngày/tháng, gọi lại API với params tương ứng.
-  3. Thêm loading state: hiển thị shimmer animation trên Bar Chart khi đang tải.
-  4. Bảo lưu lần tải gần nhất vào cache `useState` để tránh nhấp nháy khi điều hướng tới/lui.
-- **Định nghĩa hoàn thành:** RevenueScreen hiển thị dữ liệu chính xác từ backend cho tất cả 3 chế độ xem (Ngày/Tháng/Năm), biểu đồ render không bị giật.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Chưa gọi API `GET /api/analytics/revenue?timeframe=day|month|year`.
+  - Toàn bộ dữ liệu doanh thu được tính toán bằng thuật toán giả lập `getComputedRevenue()` trong file (`selectedDay * 170000 % 2200000`).
+  - Chưa có loading shimmer trên biểu đồ cột.
+- **Hành động cần làm tiếp theo:**
+  - Tạo `services/analytics.service.ts` gọi API backend.
+  - Thay thế hoàn toàn hàm `getComputedRevenue()` bằng dữ liệu trả về từ backend.
+
+---
 
 #### Task A-007: RevenueScreen — Cải thiện UX Date Picker
-- **File:** `mobile/src/screens/RevenueScreen.tsx`
-- **Việc làm:**
-  1. Thêm animation `Animated.spring` cho Modal Date Picker khi mở/đóng.
-  2. Highlight ngày/tháng hiện tại (hôm nay) trong lưới chọn ngày.
-  3. Vô hiệu hóa (disable style xám, không thể bấm) các ngày trong tương lai.
-  4. Thêm vibration `Haptics.impactAsync(ImpactFeedbackStyle.Light)` khi bấm chọn ngày.
-- **Định nghĩa hoàn thành:** Date Picker có animation mượt, không cho chọn ngày tương lai, rung nhẹ khi chọn.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Chưa tích hợp rung phản hồi `Haptics.impactAsync(ImpactFeedbackStyle.Light)`.
+  - Modal Date Picker chưa có animation mượt `Animated.spring`.
+  - Chưa vô hiệu hóa (disable) các ngày trong tương lai.
+- **Hành động cần làm tiếp theo:**
+  - Cài đặt/import `expo-haptics`, thêm rung khi chọn ngày và kiểm tra điều kiện `date > today` để disable.
 
 ---
 
-### 🛒 GIAI ĐOẠN 4 — OrderScreen & Gọi Món POS (Tuần 2-3)
+### 🛒 GIAI ĐOẠN 4 — OrderScreen & Gọi Món POS
 
 #### Task A-008: OrderScreen — Kết nối API Thực đơn
-- **File:** `mobile/src/screens/OrderScreen.tsx`
-- **API cần dùng:**
-  ```
-  GET /api/menu/items?branchId={branchId}
-  Response: { categories: string[], items: MenuItem[] }
-  ```
-- **Việc làm:**
-  1. Thay `mockMenuItems` và `mockCategories` bằng gọi API.
-  2. Hiển thị skeleton Grid 2 cột khi đang tải danh sách món.
-  3. Xử lý tìm kiếm: `filter` trên danh sách đã tải, không cần gọi API mỗi lần gõ.
-  4. Xử lý Sold Out: Món có `isSoldOut: true` hiển thị badge đỏ "Hết hàng" và tắt nút thêm giỏ.
-- **Định nghĩa hoàn thành:** OrderScreen load thực đơn thực, tìm kiếm mượt mà, món hết hàng không thể thêm giỏ.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Vẫn đang đọc danh sách món từ `useMenuStore` (bản mock data).
+  - Chưa có skeleton UI 2 cột khi đang nạp thực đơn từ mạng.
+- **Hành động cần làm tiếp theo:**
+  - Cho `OrderScreen` gọi `fetchItems()` khi mount và hiển thị skeleton trong thời gian tải.
+
+---
 
 #### Task A-009: OrderScreen — Gửi đơn hàng lên Backend
-- **File:** `mobile/src/screens/OrderScreen.tsx`, `mobile/App.tsx`
-- **API cần dùng:**
-  ```
-  POST /api/sessions/{tableId}/order
-  Body: { items: [{ menuItemId, quantity, note, selectedModifiers }], tableId, orderType: 'DINE_IN'|'TAKEAWAY' }
-  Response: { success: true, orderId: string, sessionId: string }
-  ```
-- **Việc làm:**
-  1. Sau khi nhân viên bấm **Xác nhận đơn**, gọi API tạo đơn và chờ kết quả.
-  2. Hiển thị loading state (nút mờ + spinner nhỏ) trong khi gọi API.
-  3. Thành công: hiển thị `orderSuccessModal` → `onClearCart()` → đóng modal sau 2 giây.
-  4. Lỗi: Hiển thị toast màu đỏ với nội dung lỗi, giữ nguyên giỏ hàng để nhân viên thử lại.
-- **Định nghĩa hoàn thành:** Đơn hàng được tạo thành công trên backend, giỏ hàng tự xóa sau khi đặt, đơn xuất hiện trên màn hình KDS/OrdersScreen ngay lập tức.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Sau khi chọn món và bấm "Xác nhận đơn", app chỉ mở modal thành công ảo và xóa giỏ hàng local.
+  - Không hề có lệnh gọi `POST /api/sessions/:tableId/order` lên backend.
+  - Đơn hàng không bao giờ đến được Bếp KDS hay Thu ngân.
+- **Hành động cần làm tiếp theo:**
+  - Viết hàm `submitOrder()` gửi payload `{ tableId, items, orderType }` qua Axios lên backend.
+  - Hiển thị spinner lúc gửi, báo lỗi nếu backend phản hồi thất bại.
+
+---
 
 #### Task A-010: ItemOptionsScreen — Tính toán tổng tiền tùy chọn
-- **File:** `mobile/src/screens/operations/ItemOptionsScreen.tsx`
-- **Việc làm:**
-  1. Khi người dùng chọn/bỏ Topping, tính toán lại tổng giá `unitPrice = basePrice + extraPrices`.
-  2. Hiển thị preview giá realtime phía trên nút **Thêm vào Giỏ**: `"45.000đ + 10.000đ = 55.000đ"`.
-  3. Thêm animation `Animated.timing` nhẹ khi giá thay đổi (scale 1 → 1.05 → 1) để thu hút sự chú ý.
-  4. Bộ đếm số lượng (Stepper) hiển thị tổng cộng `unitPrice × quantity` ở footer.
-- **Định nghĩa hoàn thành:** Giá cập nhật tức thì khi chọn tùy chọn, tổng tiền chính xác theo công thức `(basePrice + extraFromModifiers) × quantity`.
-
-#### Task A-011: MenuItemFormScreen — Kết nối API Quản lý thực đơn
-- **File:** `mobile/src/screens/operations/MenuItemFormScreen.tsx`
-- **API cần dùng:**
-  ```
-  POST /api/menu/items       — Thêm món mới
-  PATCH /api/menu/items/:id  — Cập nhật món
-  ```
-- **Việc làm:**
-  1. Submit form → gọi API → cập nhật `useMenuStore.items` nếu thành công.
-  2. Upload ảnh: sử dụng `expo-image-picker` lấy ảnh → gọi `POST /api/upload/image` → nhận URL từ Cloudinary, gán vào field `imageUrl`.
-  3. Hiển thị preview ảnh vừa chọn trước khi upload.
-  4. Validate form trước khi submit: Tên không được rỗng, Giá phải > 0, Danh mục phải chọn.
-- **Định nghĩa hoàn thành:** Có thể thêm / sửa món ăn từ mobile, ảnh upload lên Cloudinary và hiển thị đúng trên giao diện.
+- **Trạng thái:** 🟡 Hoàn thành 70%
+- **Đã làm:**
+  - Đã có giao diện chọn topping, đường, đá, ghi chú và bộ đếm số lượng (Stepper).
+  - Đã tính toán đúng `totalPrice = (basePrice + extraPrices) * quantity`.
+- **Chưa làm (Tồn đọng):**
+  - Thiếu chuỗi hiển thị công thức giá realtime phía trên nút bấm (ví dụ: `"45.000đ + 10.000đ = 55.000đ"`).
+  - Thiếu hiệu ứng animation scale nhẹ khi giá thay đổi.
+- **Hành động cần làm tiếp theo:**
+  - Bổ sung text phụ thể hiện chi tiết tiền gốc + topping và gắn animation scale 1.05 cho tổng giá.
 
 ---
 
-### 🔔 GIAI ĐOẠN 5 — Notification & Realtime (Tuần 3)
+#### Task A-011: MenuItemFormScreen — Thêm/sửa món & Upload ảnh
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Form thêm/sửa món chỉ gọi `useMenuStore.addItem()` để lưu tạm vào bộ nhớ in-memory, app reload là mất.
+  - Chưa tích hợp Cloudinary Image Upload (`POST /api/upload/image`). Ảnh món ăn chỉ lấy URL ảnh mẫu unsplash.
+- **Hành động cần làm tiếp theo:**
+  - Nối `expo-image-picker` với API upload ảnh backend, sau đó gửi payload món ăn lên `POST /api/menu/items`.
+
+---
+
+### 🔔 GIAI ĐOẠN 5 — Notification & Settings
 
 #### Task A-012: NotificationScreen — Kết nối Socket.IO
-- **File:** `mobile/src/screens/NotificationScreen.tsx`
-- **Việc làm:**
-  1. Cài `socket.io-client` cho React Native.
-  2. Tạo hook `useSocket()` tại `mobile/src/hooks/useSocket.ts`:
-     - Kết nối với backend `socket.io-client(BASE_URL, { auth: { token } })`.
-     - Lắng nghe sự kiện `order:new` → đẩy `NotificationItem` vào đầu danh sách.
-     - Lắng nghe `payment:completed` → đẩy thông báo thanh toán.
-  3. Badge số thông báo chưa đọc trên `BottomNav` tab **Thông Báo** cập nhật tức thì.
-  4. Bấm vào notification `ORDER` → điều hướng `onNavigate('order', 'orders')`.
-- **Định nghĩa hoàn thành:** Thông báo mới xuất hiện tức thì (<1s) mà không cần tải lại màn hình.
-
-#### Task A-013: SettingsScreen — Kết nối API Profile
-- **File:** `mobile/src/screens/SettingsScreen.tsx`
-- **API cần dùng:**
-  ```
-  GET /api/auth/me
-  PATCH /api/users/profile — Cập nhật thông tin
-  POST /api/auth/change-password
-  ```
-- **Việc làm:**
-  1. Tải và hiển thị thông tin thực của nhân viên đang đăng nhập từ `GET /api/auth/me`.
-  2. Nút **Cập Nhật Thông Tin** gọi API PATCH với form data.
-  3. Luồng Đổi mật khẩu: Modal nhập Mật khẩu cũ → Mật khẩu mới → Xác nhận → gọi API → hiển thị kết quả.
-- **Định nghĩa hoàn thành:** Thông tin hồ sơ thực từ tài khoản đang đăng nhập, đổi mật khẩu hoạt động bình thường.
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Mặc dù Thành viên B đã tạo hook `useSocket.ts`, nhưng `NotificationScreen.tsx` vẫn đọc mảng cứng `mockNotifications`.
+  - Chưa có listener cho các sự kiện `order:new` hay `payment:completed` để đẩy thông báo mới vào màn hình.
+- **Hành động cần làm tiếp theo:**
+  - Tích hợp `useSocket()` vào `NotificationScreen`, nhận event và thêm thông báo mới realtime kèm cập nhật badge ở thanh BottomNav.
 
 ---
 
-### ✅ GIAI ĐOẠN 6 — iOS Build & Release (Tuần 4)
+#### Task A-013: SettingsScreen — Kết nối API Profile & Đổi mật khẩu
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:**
+  - Thông tin nhân viên (Trần Tuấn, Quản lý ca) là dữ liệu tĩnh.
+  - Chưa gọi `GET /api/auth/me` để lấy thông tin thực của tài khoản đang đăng nhập.
+  - Modal đổi mật khẩu chỉ bấm nút hiện thông báo giả, chưa gọi `POST /api/auth/change-password`.
+- **Hành động cần làm tiếp theo:**
+  - Kết nối `GET /api/auth/me` và `POST /api/auth/change-password`.
+
+---
+
+### ✅ GIAI ĐOẠN 6 — iOS Build & Release
 
 #### Task A-014: Kiểm Thử iOS Toàn Diện
-- Chạy tất cả màn hình trên các Simulator: iPhone SE (iOS 16), iPhone 14 Pro (iOS 17), iPhone 15 Pro Max (iOS 17).
-- Kiểm tra các trường hợp đặc biệt:
-  - Mất kết nối mạng giữa chừng (Airplane Mode).
-  - Token hết hạn → tự động gọi refresh token → tiếp tục làm việc bình thường.
-  - Đặt đơn khi offline → thông báo lỗi rõ ràng, không crash app.
-  - Danh sách thực đơn trống (không có món nào).
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:** Chưa thực hiện kiểm thử chế độ offline, token hết hạn, và các dòng iPhone SE/14 Pro/15 Pro Max.
 
 #### Task A-015: iOS Build Config (EAS Build)
-- Cấu hình `eas.json` profile `preview` cho iOS internal testing.
-- Submit build lên TestFlight để test trên thiết bị thật.
-- Commit cuối: `feat(ios): production-ready iOS build configuration`
+- **Trạng thái:** 🔴 Chưa thực hiện (0%)
+- **Chưa làm:** Chưa cấu hình chứng chỉ Apple Developer và profile iOS trong `eas.json`.
 
 ---
 
-### ⚙️ GIAI ĐOẠN 7 — Backend Core APIs (Tuần 1 - Tuần 3)
+### ⚙️ GIAI ĐOẠN 7 — Backend Core APIs
 
-#### Task A-BE-001: Hệ thống Xác thực Auth & JWT thuần (Bắt buộc không dùng thư viện thứ 3)
-- **Trạng thái:** 🟢 Đã hoàn thành (30/09/2026) — `auth.service/controller/middleware/routes`, access 15m + refresh 7d HttpOnly + rotation/reuse detection, Zod validate, `ApiResponse`. Smoke test login/me/refresh pass. In-memory mock (chờ C thay bằng Prisma).
-- **File:** `backend/src/controllers/auth.controller.ts`, `backend/src/services/auth.service.ts`, `backend/src/middlewares/auth.middleware.ts`, `backend/src/routes/auth.routes.ts`
-- **Yêu cầu kỹ thuật:**
-  1. Token Access: Thời hạn 15 phút, chứa `userId`, `tenantId`, `branchId`, `role`.
-  2. Refresh Token: Thời hạn 7 ngày, lưu vào HttpOnly cookie hoặc DB, hỗ trợ rotation và reuse detection.
-  3. Middleware `authMiddleware`: Parse Authorization Bearer, xác thực chữ ký JWT, inject `req.user`.
-  4. Middleware `requireRole(allowedRoles)`: Phân quyền theo vai trò (`ADMIN`, `MANAGER`, `KITCHEN`, `CASHIER`, `PLATFORM_ADMIN`).
-  5. Đổi mật khẩu: `POST /api/auth/change-password` kiểm tra old password qua `bcrypt`.
-- **Định nghĩa hoàn thành:** Postman test pass 100% login, refresh token, role-guard từ chối khi không đúng vai trò.
-
-#### Task A-BE-002: Menu & Modifiers API (Multi-tenant & Caching)
-- **File:** `backend/src/controllers/menu.controller.ts`, `backend/src/services/menu.service.ts`, `backend/src/routes/menu.routes.ts`
-- **Endpoints:**
-  - `GET /api/menu/items?branchId=` (lọc theo tenantId và branchId)
-  - `GET /api/menu/:tableId` (public cho khách quét QR, trả kèm modifier groups)
-  - `POST /api/menu/items` (tạo món mới, validate Zod)
-  - `PATCH /api/menu/items/:id` & `DELETE /api/menu/items/:id`
-  - `POST/PATCH/DELETE /api/menu/modifier-groups` & `/api/menu/modifier-options`
-- **Định nghĩa hoàn thành:** CRUD thực đơn hoạt động mượt mà, query luôn kẹp `tenantId: req.user.tenantId`.
-
-#### Task A-BE-003: Session Khách & Gọi món (Session & Order Placement)
-- **File:** `backend/src/controllers/session.controller.ts`, `backend/src/routes/session.routes.ts`
-- **Endpoints:**
-  - `POST /api/sessions/:tableId/order`: Nhận payload mảng món gọi kèm modifiers/note, tạo `Order` và các `OrderItem` trong transaction Prisma.
-  - Cập nhật `Table.status = OCCUPIED` khi có đơn mới.
-  - Phát event Socket.IO `order:new` đến room của chi nhánh `branch:{branchId}` để Bếp KDS và Thu ngân nhận được.
-- **Định nghĩa hoàn thành:** Gọi món thành công từ Mobile/QR Menu, data lưu đúng cấu trúc Order/OrderItem, Socket event bắn tức thì.
-
-#### Task A-BE-004: Analytics & Doanh Thu Tổng Quan API
-- **File:** `backend/src/controllers/analytics.controller.ts`, `backend/src/services/analytics.service.ts`, `backend/src/routes/analytics.routes.ts`
-- **Endpoints:**
-  - `GET /api/analytics/today-overview`: Tính tổng doanh thu hôm nay, số đơn, đơn chờ, tỉ lệ tăng trưởng so với ngày hôm trước.
-  - `GET /api/analytics/revenue?timeframe=day|month|year`: Thống kê doanh thu theo mốc thời gian để vẽ biểu đồ trên mobile `RevenueScreen`.
-- **Định nghĩa hoàn thành:** Dữ liệu tính toán chính xác, response format chuẩn `ApiResponse.success`.
-
-#### Task A-BE-005: Cloudinary Image Upload Service
-- **File:** `backend/src/controllers/upload.controller.ts`, `backend/src/routes/upload.routes.ts`
-- **Nghiệp vụ:** Tiếp nhận file upload từ form thêm món (`MenuItemFormScreen` mobile / Admin web), upload lên Cloudinary thư mục `menu-go/{tenantId}/`, trả về HTTPS secure URL.
-- **Định nghĩa hoàn thành:** Trả về URL ảnh chuẩn để gán vào thuộc tính `imageUrl` của món ăn.
+#### Task A-BE-001: Hệ thống Xác thực Auth & JWT thuần
+- **Trạng thái:** 🟢 Đã hoàn thành ban đầu (Commit `c8abdae`)
+- **Đã làm:**
+  - Xây dựng hệ thống JWT thuần không phụ thuộc thư viện bên ngoài:
+    - `backend/src/services/auth.service.ts`: Tạo Access Token (15m), Refresh Token (7d), mã hóa SHA256, rotation và reuse detection.
+    - `backend/src/controllers/auth.controller.ts`: Xử lý login, refresh, me, change-password, logout.
+    - `backend/src/middlewares/auth.middleware.ts`: Xác thực Bearer token, phân quyền vai trò `requireRole()`.
+    - `backend/src/routes/auth.routes.ts`: Đăng ký toàn bộ router `/api/auth/*`.
+- **Ghi chú phối hợp:** Phiên bản ban đầu của A dùng mock DB in-memory. Sau đó, Thành viên C đã refactor ở Commit `bf09a05` để kết nối vào Prisma & PostgreSQL thật.
 
 ---
 
-## 🚦 Quy Tắc Git (2 Repositories)
-
-Mỗi repository đều có 2 nhánh chính `main` (production) và `dev` (tích hợp). Thành viên A tự tạo nhánh riêng để code:
-
-### 1. Mobile App Repo (`mobile.git`)
-```bash
-git checkout dev
-git pull origin dev
-git checkout -b feat/mobile-ios-a
-
-# Commits mẫu
-feat(home): connect homescreen to analytics api
-fix(order): correct cart item composite key for modifier items
-feat(auth): implement secure token storage with expo-secure-store
-
-# Đẩy nhánh cá nhân & tạo PR vào dev
-git push origin feat/mobile-ios-a
-```
-
-### 2. Backend Repo (`backend.git`)
-```bash
-git checkout dev
-git pull origin dev
-git checkout -b feat/be-auth-menu-a
-
-# Commits mẫu
-feat(auth): implement pure jwt rotation and role guard middleware
-feat(menu): add crud endpoints for menu items and modifier groups
-feat(orders): implement session order placement and socket broadcast
-feat(analytics): add today overview and revenue timeline endpoints
-
-# Đẩy nhánh cá nhân & tạo PR vào dev
-git push origin feat/be-auth-menu-a
-```
-
-> [!WARNING]
-> TUYỆT ĐỐI KHÔNG `git push --force` và không push trực tiếp vào `main` hoặc `dev`. Luôn mở Pull Request vào `dev`.
+#### Task A-BE-002: Menu & Modifiers API (`/api/menu/*`)
+- **Trạng thái:** 🔴 Thành viên A chưa thực hiện (0%)
+- **Chi tiết:** Thành viên A chưa viết `menu.controller.ts`, `menu.service.ts`, `menu.routes.ts`. Để hệ thống có thể hoạt động, Thành viên B và C đã phải tự tạo tạm một phần endpoints menu cơ bản. Các API CRUD Modifier Groups chuyên sâu vẫn đang thiếu.
 
 ---
 
-## 🔗 API Endpoints Thành Viên A Xây Dựng & Phụ Trách
-
-| Nhóm | Endpoint | Method | Trách nhiệm của A |
-|---|---|---|---|
-| **Auth** | `/api/auth/login` | POST | Viết Controller & Service JWT |
-| **Auth** | `/api/auth/me` | GET | Lấy thông tin tài khoản hiện tại |
-| **Auth** | `/api/auth/refresh` | POST | Xử lý cấp mới access token |
-| **Auth** | `/api/auth/change-password` | POST | Xác thực và cập nhật hash mật khẩu |
-| **Menu** | `/api/menu/items` | GET/POST | Lấy thực đơn / Tạo món mới |
-| **Menu** | `/api/menu/items/:id` | PATCH/DELETE | Cập nhật / Xóa món |
-| **Menu** | `/api/menu/:tableId` | GET | Menu công khai cho QR |
-| **Menu** | `/api/menu/modifier-groups` | ALL | Quản lý nhóm tùy chọn đường/đá/size |
-| **Sessions** | `/api/sessions/:tableId/order` | POST | Tiếp nhận đơn gọi món tại bàn |
-| **Analytics** | `/api/analytics/today-overview` | GET | Tổng hợp số liệu Dashboard |
-| **Analytics** | `/api/analytics/revenue` | GET | Chuỗi số liệu doanh thu vẽ chart |
-| **Upload** | `/api/upload/image` | POST | Xử lý upload ảnh Cloudinary |
-
+#### Task A-BE-003: Session Khách & Đặt món (`/api/sessions/:tableId/order`)
+- **Trạng thái:** 🔴 Thành viên A chưa thực hiện (0%)
+- **Chi tiết:** Thành viên A không viết endpoint đặt đơn này. Thành viên B và C đã phải gánh thay logic tạo đơn tại `order.controller.ts` và `customer.controller.ts`.
 
 ---
 
-## 📌 Ghi Chú & Lưu Ý Kỹ Thuật
+#### Task A-BE-004: Analytics & Doanh Thu Tổng Quan API (`/api/analytics/*`)
+- **Trạng thái:** 🔴 Thành viên A chưa thực hiện (0%)
+- **Chi tiết:** Thành viên A hoàn toàn bỏ trống module này. Thành viên C đã phải tự viết API tính toán metrics thực tế và xu hướng doanh thu theo giờ tại nhánh `feat/be-admin-report-c` (Commit `20e6454`).
 
-> [!IMPORTANT]
-> Tất cả màu sắc phải lấy từ `src/theme/index.ts` — **TUYỆT ĐỐI KHÔNG hardcode** hex màu trực tiếp trong file TSX. Mã màu hệ thống đã được chuẩn hóa và thành viên B có thể kế thừa.
+---
 
-> [!WARNING]
-> Mỗi Cart Item có composite key `cartItemId = ${item.id}__${JSON.stringify(modifiers)}__${note}`. Khi gọi `onRemoveFromCart` phải truyền đúng `cartItemId`, **KHÔNG** truyền `item.id` thuần nếu món có modifier — sẽ gây bug xóa nhầm.
+#### Task A-BE-005: Cloudinary Image Upload Service (`/api/upload/image`)
+- **Trạng thái:** 🔴 Thành viên A chưa thực hiện (0%)
+- **Chi tiết:** Chưa khởi tạo controller, route và cấu hình Cloudinary SDK cho backend.
 
-> [!NOTE]
-> Thành viên A và B dùng chung `src/types/index.ts` và `src/theme/index.ts`. Hai file này do **Thành viên A quản lý**. Khi Thành viên B cần thêm type mới, tạo Pull Request vào nhánh của A để tránh xung đột.
+---
+
+## 🚦 Tác Động Phối Hợp Chéo (Cross-Member Impact)
+
+Do Thành viên A dừng hoạt động sau ngày 30/09/2026:
+1. **Thành viên B (Mobile & Operations):** Đã phải tự tạo các màn hình sơ đồ bàn (`TablesScreen.tsx`), hook `useSocket.ts` và file cấu hình `eas.json` để giữ tiến độ dự án.
+2. **Thành viên C (Web & Backend Architecture):** Đã phải refactor lại toàn bộ module Auth của A từ in-memory sang Prisma DB thật, đồng thời phải tự viết API Analytics overview (`/api/analytics/*`) vốn thuộc trách nhiệm của A.
+3. **Ứng dụng Mobile:** Hiện tại phần lớn các màn hình của A (Home, Revenue, Order, MenuForm, Settings) chỉ là **vỏ giao diện (Mock UI)**, chưa thể vận hành thực tế với backend.
+
+---
+
+## 📌 Checklist Cần Hoàn Thiện Ngay Để Đóng Task Của A
+
+- [ ] **Ưu tiên 1:** Nối nút Đăng xuất tại `SettingsScreen.tsx` vào `authStore.logout()` (giải quyết dứt điểm Auth Flow).
+- [ ] **Ưu tiên 2:** Chuyển `menuStore.ts` sang gọi API thực `GET /api/menu/items`, loại bỏ phụ thuộc `mockData.ts`.
+- [ ] **Ưu tiên 3:** Nối API `POST /api/sessions/:tableId/order` vào nút Xác nhận đơn trên `OrderScreen.tsx`.
+- [ ] **Ưu tiên 4:** Nối API `GET /api/analytics/today-overview` và `GET /api/analytics/revenue` vào `HomeScreen.tsx` và `RevenueScreen.tsx`.
+- [ ] **Ưu tiên 5:** Viết service upload ảnh Cloudinary trên backend (`POST /api/upload/image`) và nối vào `MenuItemFormScreen.tsx`.
