@@ -560,3 +560,15 @@ git push origin feat/be-admin-report-c
   - `vouchers/page.tsx`, `roles/page.tsx`: toggle thất bại rollback + hiện banner lỗi đỏ.
   - Verify: `tsc --noEmit` + `next build` 23 routes xanh.
 - **Còn lại (chấp nhận, theo dõi)**: QR bàn chưa mã hóa JWT (spec C-023, cần backend phối hợp); `order.note` KDS hiển thị 1 dòng (không thuộc diện `item.note` bắt buộc); chart dashboard màu cứng (ngoài P1).
+
+### 09/10/2026 — Kiểm định độc lập: backlog còn lại của C
+- **Phạm vi kiểm định**: nhánh backend `feat/be-admin-report-c` (`d876016`) + frontend `feat/web-frontend-c` (`b5f8317`) so với `dev`.
+- **Verify**: backend `tsc --noEmit` + `npm run build` xanh, Prisma schema hợp lệ, frontend `tsc --noEmit` xanh, `check:i18n` 394/394, `next build` 23 routes xanh.
+- **Backlog còn lại (việc chưa xong thật)**:
+  1. `C-REM-001` — LCP/perf chưa đạt target (Performance 85–86 vs >90, LCP 3.0s vs <2.5s; bottleneck là ảnh Unsplash remote) → chuyển ảnh sang CDN/Cloudinary hoặc WebP/AVIF local rồi đo lại Lighthouse.
+  2. `C-REM-002` — Trừ kho BOM tự động khi món DONE / thanh toán → phối hợp schema + trigger với Team B.
+  3. `C-REM-003` — Cashier & payment đóng session, ghi doanh thu vào DB (hiện backend vẫn mock — domain của B).
+  4. `C-REM-004` — Hạ tầng CI/CD production (Docker, deploy, secrets) — chưa làm.
+  5. `C-REM-005` — Nợ merge vào `dev`: 41 commits backend + 47 commits frontend (vòng 2–10) vẫn nằm trên nhánh cá nhân.
+  6. `C-REM-006` — Hiệu chỉnh diễn đạt docs: schema thực tế **28 models** (docs đang ghi "~40 models").
+  7. `C-REM-007` — `TableMenuClient.tsx` còn đọc `wifiPassword` vào state (backend public endpoint đã chặn) → rà soát bỏ hẳn ở client.
