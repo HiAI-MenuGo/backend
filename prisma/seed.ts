@@ -5,49 +5,57 @@ import {
   TenantStatus,
   TableStatus,
   VoucherType,
+  SessionStatus,
+  OrderStatus,
+  OrderItemStatus,
+  OrderType,
+  PaymentStatus,
+  PaymentMethod,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting database seeding for HiAI-MenuGo...');
+  console.log('🌱 Starting comprehensive database seeding for Tasty Station x HiAI-MenuGo...');
 
   const defaultPasswordHash = bcrypt.hashSync('123456', 10);
 
-  // 1. Create or upsert Tenant & Branding (Idempotent)
+  // ==========================================
+  // 1. TENANT & BRANDING (Tasty Station / HiAI-MenuGo)
+  // ==========================================
   const brandingData = {
     logoUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop',
     bannerUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&h=400&fit=crop',
-    primaryColor: '#f59e0b',
-    secondaryColor: '#d97706',
-    accentColor: '#fbbf24',
-    bankCode: 'MB',
-    bankAccountNo: '0901234567',
-    bankAccountName: 'CONG TY CO PHAN HIAI MENUGO',
-    wifiSsid: 'HiAI-MenuGo_Guest_5G',
-    wifiPassword: 'menugovietnam',
-    footerText: 'Cảm ơn quý khách và hẹn gặp lại!',
+    primaryColor: '#00A389', // Tasty Station Turquoise
+    secondaryColor: '#FF7A59', // Coral Orange
+    accentColor: '#A855F7', // Lavender Purple
+    bankCode: 'VCB',
+    bankAccountNo: '1028391829',
+    bankAccountName: 'IBRAHIM KADRI',
+    wifiSsid: 'TastyStation_5G_Guest',
+    wifiPassword: 'tastystation2026',
+    footerText: 'Cảm ơn Quý khách & Hẹn gặp lại tại Tasty Station!',
   };
 
   const tenant = await prisma.tenant.upsert({
-    where: { code: 'MENUGO_DEMO' },
+    where: { code: 'TASTY_STATION' },
     update: {
-      name: 'Nhà Hàng Mẫu HiAI-MenuGo',
-      ownerEmail: 'admin@menu-go.vn',
+      name: 'Tasty Station (HiAI-MenuGo)',
+      ownerEmail: 'admin@tastystation.com',
       ownerPhone: '0901234567',
     },
     create: {
-      code: 'MENUGO_DEMO',
-      name: 'Nhà Hàng Mẫu HiAI-MenuGo',
-      slug: 'hiai-menugo-demo',
-      ownerEmail: 'admin@menu-go.vn',
+      code: 'TASTY_STATION',
+      name: 'Tasty Station (HiAI-MenuGo)',
+      slug: 'tasty-station',
+      ownerEmail: 'admin@tastystation.com',
       ownerPhone: '0901234567',
       status: TenantStatus.ACTIVE,
-      plan: SubscriptionPlan.PRO,
+      plan: SubscriptionPlan.ENTERPRISE,
       planExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      maxBranches: 5,
-      maxUsers: 25,
+      maxBranches: 10,
+      maxUsers: 50,
     },
   });
 
@@ -62,76 +70,50 @@ async function main() {
 
   console.log(`✅ Tenant & Branding seeded: ${tenant.name} (${tenant.id})`);
 
-  // AN TOÀN PROD: không bao giờ wipe dữ liệu vận hành.
-  // Chỉ bỏ qua nạp catalog khi tenant đã có order session nào (DB đang vận hành),
-  // hoặc khi chạy seed với ALLOW_SEED_WIPE=true một cách tường minh.
-  const operationalSessions = await prisma.orderSession.count({ where: { tenantId: tenant.id } });
-  const allowWipe = process.env.ALLOW_SEED_WIPE === 'true';
-  const skipCatalog = operationalSessions > 0 && !allowWipe;
-
-  if (skipCatalog) {
-    console.log(
-      `⚠️  Tenant ${tenant.code} đã có ${operationalSessions} phiên vận hành — BỎ QUA nạp catalog để bảo toàn dữ liệu thật.`
-    );
-  } else if (allowWipe) {
-    // Chỉ wipe sạch khi ALLOW_SEED_WIPE=true được chỉ định rõ
-    console.log('🧹 ALLOW_SEED_WIPE=true: dọn dẹp catalog cũ trước khi nạp...');
-    await prisma.voucherUsage.deleteMany({ where: { voucher: { tenantId: tenant.id } } });
-    await prisma.voucher.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.paymentTransaction.deleteMany({ where: { session: { tenantId: tenant.id } } });
-    await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { tenantId: tenant.id } } } });
-    await prisma.orderItem.deleteMany({ where: { order: { tenantId: tenant.id } } });
-    await prisma.order.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.orderSession.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.zReport.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.recipe.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
-    await prisma.inventoryLog.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.ingredient.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.itemModifierGroup.deleteMany({ where: { menuItem: { tenantId: tenant.id } } });
-    await prisma.menuItem.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.modifierOption.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.modifierGroup.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.menuCategory.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.table.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.area.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.customer.deleteMany({ where: { tenantId: tenant.id } });
-    await prisma.membershipTier.deleteMany({ where: { tenantId: tenant.id } });
-  }
-
-  // 2. Create Default Branch (Upsert)
+  // ==========================================
+  // 2. FLAGSHIP STORE BRANCH
+  // ==========================================
   const branch = await prisma.branch.upsert({
     where: {
       tenantId_code: {
         tenantId: tenant.id,
-        code: 'BR-01',
+        code: 'TS-01',
       },
     },
     update: {
-      name: 'Chi Nhánh Quận 1 (Flagship Store)',
-      address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. HCM',
-      phone: '02838123456',
-      latitude: 10.7769,
-      longitude: 106.7009,
-      radiusMeters: 150.0,
+      name: 'Tasty Station - Chi Nhánh Thủ Đức',
+      address: '123 Võ Văn Ngân, Phường Linh Chiểu, TP. Thủ Đức, TP. HCM',
+      phone: '02838967890',
+      latitude: 10.8505,
+      longitude: 106.7719,
+      radiusMeters: 200.0,
       isActive: true,
     },
     create: {
       tenantId: tenant.id,
-      code: 'BR-01',
-      name: 'Chi Nhánh Quận 1 (Flagship Store)',
-      address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. HCM',
-      phone: '02838123456',
-      latitude: 10.7769,
-      longitude: 106.7009,
-      radiusMeters: 150.0,
+      code: 'TS-01',
+      name: 'Tasty Station - Chi Nhánh Thủ Đức',
+      address: '123 Võ Văn Ngân, Phường Linh Chiểu, TP. Thủ Đức, TP. HCM',
+      phone: '02838967890',
+      latitude: 10.8505,
+      longitude: 106.7719,
+      radiusMeters: 200.0,
       isActive: true,
     },
   });
 
-  console.log(`✅ Branch seeded: ${branch.name} (${branch.id})`);
+  console.log(`✅ Branch seeded: ${branch.name}`);
 
-  // 3. Create Users (Upsert)
+  // ==========================================
+  // 3. STAFF USERS (Ibrahim Kadri - Admin)
+  // ==========================================
   const usersData = [
+    {
+      email: 'ibrahim.kadri@tastystation.com',
+      name: 'Ibrahim Kadri',
+      role: UserRole.ADMIN,
+      branchId: branch.id,
+    },
     {
       email: 'superadmin@platform.vn',
       name: 'Super Admin Nền Tảng',
@@ -139,26 +121,20 @@ async function main() {
       branchId: null,
     },
     {
-      email: 'admin@menu-go.vn',
-      name: 'Trần Hoàng Đạt (Chủ quán)',
-      role: UserRole.ADMIN,
-      branchId: branch.id,
-    },
-    {
-      email: 'manager@menu-go.vn',
-      name: 'Lê Thanh Hải (Quản lý)',
+      email: 'manager@tastystation.com',
+      name: 'Lê Thanh Hải (Quản lý trưởng)',
       role: UserRole.MANAGER,
       branchId: branch.id,
     },
     {
-      email: 'cashier@menu-go.vn',
-      name: 'Nguyễn Thị Mai (Thu ngân)',
+      email: 'cashier@tastystation.com',
+      name: 'Nguyễn Thị Mai (Thu ngân ca sáng)',
       role: UserRole.CASHIER,
       branchId: branch.id,
     },
     {
-      email: 'kitchen@menu-go.vn',
-      name: 'Phạm Văn Bếp (Bếp trưởng)',
+      email: 'kitchen@tastystation.com',
+      name: 'Phạm Văn Bếp (Bếp trưởng KDS)',
       role: UserRole.KITCHEN,
       branchId: branch.id,
     },
@@ -184,40 +160,61 @@ async function main() {
       },
     });
   }
-  console.log(`✅ Seeded ${usersData.length} users with password '123456'`);
+  console.log(`✅ Seeded ${usersData.length} staff users (Password: '123456')`);
 
-  if (skipCatalog) {
-    console.log('✅ Seed an toàn hoàn tất (giữ nguyên catalog & dữ liệu vận hành).');
-    return;
-  }
-
-  // 4. Create Areas and Tables (Upsert theo unique [tenantId, branchId, name] và [branchId, code])
-  const groundFloor = await prisma.area.upsert({
-    where: {
-      tenantId_branchId_name: {
-        tenantId: tenant.id,
-        branchId: branch.id,
-        name: 'Tầng Trệt (Máy Lạnh)',
-      },
-    },
-    update: { displayOrder: 1 },
-    create: {
-      tenantId: tenant.id,
-      branchId: branch.id,
-      name: 'Tầng Trệt (Máy Lạnh)',
-      displayOrder: 1,
-    },
-  });
-
-  const groundTables = [
-    { code: 'Bàn 01', name: 'Bàn 01 - Cửa Sổ', capacity: 2, status: TableStatus.EMPTY },
-    { code: 'Bàn 02', name: 'Bàn 02 - Trung Tâm', capacity: 4, status: TableStatus.OCCUPIED },
-    { code: 'Bàn 03', name: 'Bàn 03 - Góc Ấm', capacity: 4, status: TableStatus.EMPTY },
-    { code: 'Bàn 04', name: 'Bàn 04 - Nhóm', capacity: 6, status: TableStatus.EMPTY },
+  // ==========================================
+  // 4. AREAS & TABLES (Mirroring Screenshot 2 Floor Plan)
+  // ==========================================
+  const areasData = [
+    { name: 'Main Dining', displayOrder: 1 },
+    { name: 'Terrace', displayOrder: 2 },
+    { name: 'Outdoor', displayOrder: 3 },
   ];
 
-  for (const t of groundTables) {
-    await prisma.table.upsert({
+  const areaMap = new Map<string, any>();
+  for (const a of areasData) {
+    const area = await prisma.area.upsert({
+      where: {
+        tenantId_branchId_name: {
+          tenantId: tenant.id,
+          branchId: branch.id,
+          name: a.name,
+        },
+      },
+      update: { displayOrder: a.displayOrder },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        name: a.name,
+        displayOrder: a.displayOrder,
+      },
+    });
+    areaMap.set(a.name, area);
+  }
+
+  const mainDining = areaMap.get('Main Dining');
+  const terrace = areaMap.get('Terrace');
+  const outdoor = areaMap.get('Outdoor');
+
+  // Main Dining Tables 1-12 matching Screenshot 2
+  const mainDiningTables = [
+    { code: 'Table #1', name: 'Table #1 (Main Dining)', capacity: 6, status: TableStatus.EMPTY },
+    { code: 'Table #2', name: 'Table #2 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #3', name: 'Table #3 (Main Dining)', capacity: 2, status: TableStatus.RESERVED },
+    { code: 'Table #4', name: 'Table #4 (Main Dining)', capacity: 3, status: TableStatus.OCCUPIED },
+    { code: 'Table #5', name: 'Table #5 (Main Dining)', capacity: 2, status: TableStatus.EMPTY },
+    { code: 'Table #6', name: 'Table #6 (Main Dining)', capacity: 7, status: TableStatus.EMPTY },
+    { code: 'Table #7', name: 'Table #7 (Main Dining)', capacity: 10, status: TableStatus.EMPTY },
+    { code: 'Table #8', name: 'Table #8 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #9', name: 'Table #9 (Main Dining)', capacity: 4, status: TableStatus.OCCUPIED },
+    { code: 'Table #10', name: 'Table #10 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #11', name: 'Table #11 (Main Dining)', capacity: 2, status: TableStatus.RESERVED },
+    { code: 'Table #12', name: 'Table #12 (Main Dining)', capacity: 8, status: TableStatus.EMPTY },
+  ];
+
+  const tableMap = new Map<string, any>();
+  for (const t of mainDiningTables) {
+    const record = await prisma.table.upsert({
       where: {
         branchId_code: {
           branchId: branch.id,
@@ -227,46 +224,32 @@ async function main() {
       update: {
         name: t.name,
         capacity: t.capacity,
-        areaId: groundFloor.id,
+        areaId: mainDining.id,
         status: t.status,
       },
       create: {
         tenantId: tenant.id,
         branchId: branch.id,
-        areaId: groundFloor.id,
+        areaId: mainDining.id,
         code: t.code,
         name: t.name,
         capacity: t.capacity,
         status: t.status,
       },
     });
+    tableMap.set(t.code, record);
   }
 
-  const gardenArea = await prisma.area.upsert({
-    where: {
-      tenantId_branchId_name: {
-        tenantId: tenant.id,
-        branchId: branch.id,
-        name: 'Khu Sân Vườn Ngoài Trời',
-      },
-    },
-    update: { displayOrder: 2 },
-    create: {
-      tenantId: tenant.id,
-      branchId: branch.id,
-      name: 'Khu Sân Vườn Ngoài Trời',
-      displayOrder: 2,
-    },
-  });
-
-  const gardenTables = [
-    { code: 'Bàn 05', name: 'Bàn 05 - Hiên Trà', capacity: 4, status: TableStatus.EMPTY },
-    { code: 'Bàn 06', name: 'Bàn 06 - Hồ Cá', capacity: 4, status: TableStatus.EMPTY },
-    { code: 'VIP-01', name: 'Phòng VIP Hoàng Gia', capacity: 10, status: TableStatus.RESERVED },
+  // Terrace & Outdoor Tables
+  const otherTables = [
+    { code: 'Terrace #1', name: 'Bàn T-01 (Terrace)', capacity: 4, areaId: terrace.id, status: TableStatus.EMPTY },
+    { code: 'Terrace #2', name: 'Bàn T-02 (Terrace)', capacity: 4, areaId: terrace.id, status: TableStatus.EMPTY },
+    { code: 'Outdoor #1', name: 'Bàn O-01 (Outdoor)', capacity: 6, areaId: outdoor.id, status: TableStatus.EMPTY },
+    { code: 'Outdoor #2', name: 'Bàn O-02 (Outdoor)', capacity: 8, areaId: outdoor.id, status: TableStatus.EMPTY },
   ];
 
-  for (const t of gardenTables) {
-    await prisma.table.upsert({
+  for (const t of otherTables) {
+    const record = await prisma.table.upsert({
       where: {
         branchId_code: {
           branchId: branch.id,
@@ -276,219 +259,274 @@ async function main() {
       update: {
         name: t.name,
         capacity: t.capacity,
-        areaId: gardenArea.id,
+        areaId: t.areaId,
         status: t.status,
       },
       create: {
         tenantId: tenant.id,
         branchId: branch.id,
-        areaId: gardenArea.id,
+        areaId: t.areaId,
         code: t.code,
         name: t.name,
         capacity: t.capacity,
         status: t.status,
       },
     });
+    tableMap.set(t.code, record);
   }
-  console.log(`✅ Areas and Tables seeded (upserted) for branch ${branch.name}`);
+  console.log(`✅ Seeded 16 Tables across 3 Areas (Main Dining, Terrace, Outdoor)`);
 
-  // 5. Modifier Groups & Options (Idempotent Upsert)
-  const modifierGroupsData = [
-    {
-      name: 'Kích cỡ (Size)',
-      minSelect: 1,
-      maxSelect: 1,
-      isRequired: true,
-      options: [
-        { name: 'Size M (Tiêu chuẩn)', extraPrice: 0, isDefault: true, displayOrder: 1 },
-        { name: 'Size L (+10.000đ)', extraPrice: 10000, isDefault: false, displayOrder: 2 },
-      ],
-    },
-    {
-      name: 'Độ ngọt (Đường)',
-      minSelect: 1,
-      maxSelect: 1,
-      isRequired: true,
-      options: [
-        { name: '100% Đường', extraPrice: 0, isDefault: true, displayOrder: 1 },
-        { name: '70% Đường', extraPrice: 0, isDefault: false, displayOrder: 2 },
-        { name: '50% Đường (Ít ngọt)', extraPrice: 0, isDefault: false, displayOrder: 3 },
-        { name: 'Không đường', extraPrice: 0, isDefault: false, displayOrder: 4 },
-      ],
-    },
-    {
-      name: 'Lượng đá',
-      minSelect: 1,
-      maxSelect: 1,
-      isRequired: true,
-      options: [
-        { name: '100% Đá', extraPrice: 0, isDefault: true, displayOrder: 1 },
-        { name: '70% Đá', extraPrice: 0, isDefault: false, displayOrder: 2 },
-        { name: '50% Đá (Ít đá)', extraPrice: 0, isDefault: false, displayOrder: 3 },
-        { name: 'Không đá', extraPrice: 0, isDefault: false, displayOrder: 4 },
-      ],
-    },
-    {
-      name: 'Topping thêm',
-      minSelect: 0,
-      maxSelect: 5,
-      isRequired: false,
-      options: [
-        { name: 'Trân Châu Trắng Giòn', extraPrice: 10000, isDefault: false, displayOrder: 1 },
-        { name: 'Kem Cheese Macchiato', extraPrice: 12000, isDefault: false, displayOrder: 2 },
-        { name: 'Thạch Dừa Giòn', extraPrice: 8000, isDefault: false, displayOrder: 3 },
-        { name: 'Đào Miếng Thơm Ngọt', extraPrice: 10000, isDefault: false, displayOrder: 4 },
-      ],
-    },
+  // ==========================================
+  // 5. MENU CATEGORIES (From FE INITIAL_CATEGORIES)
+  // ==========================================
+  const categoriesData = [
+    { slug: 'all-dishes', name: 'All Dishes', icon: '🍲', isDrink: false, displayOrder: 1 },
+    { slug: 'breakfast', name: 'Breakfast', icon: '🍳', isDrink: false, displayOrder: 2 },
+    { slug: 'beef-dishes', name: 'Beef Dishes', icon: '🥩', isDrink: false, displayOrder: 3 },
+    { slug: 'biryani', name: 'Biryani', icon: '🍛', isDrink: false, displayOrder: 4 },
+    { slug: 'chicken-dishes', name: 'Chicken Dishes', icon: '🍗', isDrink: false, displayOrder: 5 },
+    { slug: 'desserts', name: 'Desserts', icon: '🍰', isDrink: false, displayOrder: 6 },
+    { slug: 'dinner', name: 'Dinner', icon: '🍽️', isDrink: false, displayOrder: 7 },
+    { slug: 'drinks', name: 'Drinks', icon: '🍹', isDrink: true, displayOrder: 8 },
+    { slug: 'fast-foods', name: 'Fast Foods', icon: '🌭', isDrink: false, displayOrder: 9 },
+    { slug: 'lunch', name: 'Lunch', icon: '🍱', isDrink: false, displayOrder: 10 },
+    { slug: 'platters', name: 'Platters', icon: '🥘', isDrink: false, displayOrder: 11 },
+    { slug: 'salads', name: 'Salads', icon: '🥗', isDrink: false, displayOrder: 12 },
+    { slug: 'side-dishes', name: 'Side Dishes', icon: '🍟', isDrink: false, displayOrder: 13 },
+    { slug: 'soups', name: 'Soups', icon: '🥣', isDrink: false, displayOrder: 14 },
+    { slug: 'pasta', name: 'Pasta', icon: '🍝', isDrink: false, displayOrder: 15 },
+    { slug: 'rice', name: 'Rice', icon: '🍚', isDrink: false, displayOrder: 16 },
   ];
 
-  const modGroupMap = new Map<string, any>();
-  for (const g of modifierGroupsData) {
-    const group = await prisma.modifierGroup.upsert({
+  const catMap = new Map<string, any>();
+  for (const c of categoriesData) {
+    const cat = await prisma.menuCategory.upsert({
       where: {
-        tenantId_name: {
+        tenantId_slug: {
           tenantId: tenant.id,
-          name: g.name,
+          slug: c.slug,
         },
       },
       update: {
-        minSelect: g.minSelect,
-        maxSelect: g.maxSelect,
-        isRequired: g.isRequired,
+        name: c.name,
+        icon: c.icon,
+        isDrink: c.isDrink,
+        displayOrder: c.displayOrder,
       },
       create: {
         tenantId: tenant.id,
-        name: g.name,
-        minSelect: g.minSelect,
-        maxSelect: g.maxSelect,
-        isRequired: g.isRequired,
+        slug: c.slug,
+        name: c.name,
+        icon: c.icon,
+        isDrink: c.isDrink,
+        displayOrder: c.displayOrder,
       },
     });
-    modGroupMap.set(g.name, group);
-
-    for (const opt of g.options) {
-      await prisma.modifierOption.upsert({
-        where: {
-          modifierGroupId_name: {
-            modifierGroupId: group.id,
-            name: opt.name,
-          },
-        },
-        update: {
-          extraPrice: opt.extraPrice,
-          isDefault: opt.isDefault,
-          displayOrder: opt.displayOrder,
-        },
-        create: {
-          tenantId: tenant.id,
-          modifierGroupId: group.id,
-          name: opt.name,
-          extraPrice: opt.extraPrice,
-          isDefault: opt.isDefault,
-          displayOrder: opt.displayOrder,
-        },
-      });
-    }
+    catMap.set(c.slug, cat);
   }
+  console.log(`✅ Seeded ${categoriesData.length} Menu Categories with Icons`);
 
-  const sizeGroup = modGroupMap.get('Kích cỡ (Size)');
-  const sugarGroup = modGroupMap.get('Độ ngọt (Đường)');
-  const iceGroup = modGroupMap.get('Lượng đá');
-  const toppingGroup = modGroupMap.get('Topping thêm');
-  console.log(`✅ Modifier groups and options seeded (upserted)`);
-
-  // 6. Menu Categories & Items (Idempotent Upsert)
-  const catTea = await prisma.menuCategory.upsert({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: 'tra-trai-cay' } },
-    update: { name: 'Trà Trái Cây & Milk Tea', isDrink: true, displayOrder: 1 },
-    create: {
-      tenantId: tenant.id,
-      name: 'Trà Trái Cây & Milk Tea',
-      slug: 'tra-trai-cay',
-      isDrink: true,
-      displayOrder: 1,
-    },
-  });
-
-  const catCoffee = await prisma.menuCategory.upsert({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: 'ca-phe' } },
-    update: { name: 'Cà Phê Truyền Thống & Hiện Đại', isDrink: true, displayOrder: 2 },
-    create: {
-      tenantId: tenant.id,
-      name: 'Cà Phê Truyền Thống & Hiện Đại',
-      slug: 'ca-phe',
-      isDrink: true,
-      displayOrder: 2,
-    },
-  });
-
-  const catFood = await prisma.menuCategory.upsert({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: 'do-an-nhe' } },
-    update: { name: 'Đồ Ăn Nhẹ & Bánh Ngọt', isDrink: false, displayOrder: 3 },
-    create: {
-      tenantId: tenant.id,
-      name: 'Đồ Ăn Nhẹ & Bánh Ngọt',
-      slug: 'do-an-nhe',
-      isDrink: false,
-      displayOrder: 3,
-    },
-  });
-
+  // ==========================================
+  // 6. MENU ITEMS (From FE INITIAL_DISHES & Screenshots)
+  // ==========================================
   const menuItemsData = [
+    // Special / Lunch / Dinner Dishes (Screenshot 1)
     {
-      code: 'TEA-01',
-      categoryId: catTea.id,
-      name: 'Trà Đào Cam Sả',
-      description: 'Hương vị đào tươi giòn ngọt kết hợp cam vàng mọng nước và sả thanh mát chuẩn vị.',
-      basePrice: 45000,
-      costPrice: 12000,
-      imageUrl: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=500&h=500&fit=crop',
-      modGroupIds: [sizeGroup.id, sugarGroup.id, iceGroup.id, toppingGroup.id],
+      code: 'LUNCH-01',
+      catSlug: 'lunch',
+      name: 'Grilled Salmon Steak',
+      description: 'Cá hồi Na Uy áp chảo sốt bơ chanh tỏi hảo hạng, ăn kèm măng tây tươi giòn.',
+      basePrice: 15.0,
+      costPrice: 5.5,
+      imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=350&auto=format&fit=crop&q=80',
     },
     {
-      code: 'CF-01',
-      categoryId: catCoffee.id,
-      name: 'Cà Phê Muối Đặc Biệt',
-      description: 'Cà phê Robusta Đắk Lắk đậm đà hòa quyện cùng lớp kem muối béo ngậy mằn mặn.',
-      basePrice: 35000,
-      costPrice: 8000,
-      imageUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&h=500&fit=crop',
-      modGroupIds: [sizeGroup.id, sugarGroup.id, iceGroup.id],
+      code: 'SALAD-01',
+      catSlug: 'salads',
+      name: 'Tofu Poke Bowl',
+      description: 'Poke bowl đậu hũ hữu cơ ướp dầu mè, bơ sáp, edamame và cơm gạo lứt.',
+      basePrice: 7.0,
+      costPrice: 2.2,
+      imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=350&auto=format&fit=crop&q=80',
     },
     {
-      code: 'CF-02',
-      categoryId: catCoffee.id,
-      name: 'Bạc Xỉu Sài Gòn',
-      description: 'Vị ngọt dịu của sữa đặc thơm béo, nhẹ nhàng đưa hương vị cà phê phin nguyên bản.',
-      basePrice: 32000,
-      costPrice: 7500,
-      imageUrl: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=500&h=500&fit=crop',
-      modGroupIds: [sizeGroup.id, sugarGroup.id, iceGroup.id],
+      code: 'PASTA-01',
+      catSlug: 'pasta',
+      name: 'Pasta with Roast Beef',
+      description: 'Mì Ý sốt kem nấm truffle ăn kèm thăn bò nướng mềm mọng nước chuẩn Ý.',
+      basePrice: 10.0,
+      costPrice: 3.8,
+      imageUrl: 'https://images.unsplash.com/photo-1621996346565-e3d5d62817ee?w=350&auto=format&fit=crop&q=80',
     },
     {
-      code: 'FD-01',
-      categoryId: catFood.id,
-      name: 'Khoai Tây Chiên Phô Mai',
-      description: 'Khoai tây cắt ziczac chiên vàng ruộm lắc bột phô mai béo thơm ngất ngây.',
-      basePrice: 39000,
-      costPrice: 11000,
-      imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500&h=500&fit=crop',
-      modGroupIds: [],
+      code: 'BEEF-01',
+      catSlug: 'beef-dishes',
+      name: 'Beef Steak',
+      description: 'Thăn ngoại bò Black Angus 250g nướng than hoa, sốt tiêu đen thượng hạng.',
+      basePrice: 30.0,
+      costPrice: 12.0,
+      imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=350&auto=format&fit=crop&q=80',
     },
     {
-      code: 'FD-02',
-      categoryId: catFood.id,
-      name: 'Bánh Croissant Bơ Pháp',
-      description: 'Bánh sừng bò ngàn lớp thơm lừng bơ Pháp cao cấp, vỏ ngoài giòn xốp bên trong mềm ẩm.',
-      basePrice: 42000,
-      costPrice: 15000,
-      imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&h=500&fit=crop',
-      modGroupIds: [],
+      code: 'RICE-01',
+      catSlug: 'rice',
+      name: 'Shrimp Rice Bowl',
+      description: 'Cơm tôm sú rim tỏi ớt sa tế đậm đà ăn kèm rau củ luộc và trứng lòng đào.',
+      basePrice: 6.0,
+      costPrice: 2.1,
+      imageUrl: 'https://images.unsplash.com/photo-1553240799-36bbf332a5c3?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-02',
+      catSlug: 'desserts',
+      name: 'Apple Stuffed Pancake',
+      description: 'Bánh pancake xốp mềm nhân táo quế caramen, ăn kèm kem vani Pháp.',
+      basePrice: 35.0,
+      costPrice: 9.0,
+      imageUrl: 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'CHK-01',
+      catSlug: 'chicken-dishes',
+      name: 'Chicken Quinoa & Herbs',
+      description: 'Ức gà nướng thảo mộc Địa Trung Hải, ăn kèm hạt quinoa và sốt sữa chua Hy Lạp.',
+      basePrice: 12.0,
+      costPrice: 4.0,
+      imageUrl: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'SALAD-02',
+      catSlug: 'salads',
+      name: 'Vegetable Shrimp',
+      description: 'Salad tôm sú tươi kèm xà lách Romaine, cà chua bi và sốt chanh leo.',
+      basePrice: 10.0,
+      costPrice: 3.5,
+      imageUrl: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'SALAD-03',
+      catSlug: 'salads',
+      name: 'Avocado Green Salad',
+      description: 'Salad bơ sáp Đà Lạt, hạt óc chó và giấm Balsamic hữu cơ.',
+      basePrice: 8.5,
+      costPrice: 2.8,
+      imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'SOUP-01',
+      catSlug: 'soups',
+      name: 'Spicy Tom Yum Soup',
+      description: 'Súp Tom Yum hải sản chua cay chuẩn vị Thái Lan, cốt dừa béo thơm.',
+      basePrice: 11.0,
+      costPrice: 3.6,
+      imageUrl: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'CHK-02',
+      catSlug: 'chicken-dishes',
+      name: 'Crispy Chicken Wings',
+      description: 'Cánh gà chiên giòn rụm sốt cay ngọt Hàn Quốc, rắc mè rang thơm lừng.',
+      basePrice: 9.5,
+      costPrice: 3.2,
+      imageUrl: 'https://images.unsplash.com/photo-1562967914-608f82629710?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'RICE-02',
+      catSlug: 'rice',
+      name: 'Seafood Bibimbap',
+      description: 'Cơm trộn niêu đất hải sản sốt Gochujang thơm lừng nóng hổi.',
+      basePrice: 13.0,
+      costPrice: 4.5,
+      imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=350&auto=format&fit=crop&q=80',
+    },
+
+    // Desserts Catalog (Screenshot 3)
+    {
+      code: 'DES-01',
+      catSlug: 'desserts',
+      name: 'Cheese Syrniki Pancakes',
+      description: 'Bánh phô mai truyền thống Đông Âu áp chảo thơm nức, ăn kèm mứt dâu rừng.',
+      basePrice: 8.0,
+      costPrice: 2.5,
+      imageUrl: 'https://images.unsplash.com/photo-1506084868230-bb9d95c24759?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-03',
+      catSlug: 'desserts',
+      name: 'Terracotta Bowl',
+      description: 'Tô gốm sữa chua Hy Lạp kèm hạt chia, hạnh nhân lát và mật ong rừng.',
+      basePrice: 12.0,
+      costPrice: 3.8,
+      imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-04',
+      catSlug: 'desserts',
+      name: 'Croissant Dessert',
+      description: 'Bánh sừng bò nướng kẹp kem hạnh nhân và quả mọng tươi phủ đường tuyết.',
+      basePrice: 15.0,
+      costPrice: 4.8,
+      imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-05',
+      catSlug: 'desserts',
+      name: 'Granola Banana & Berry',
+      description: 'Yến mạch nướng giòn rụm kèm chuối tiêu, việt quất và dâu tây sấy lạnh.',
+      basePrice: 10.0,
+      costPrice: 3.0,
+      imageUrl: 'https://images.unsplash.com/photo-1511690656952-34342bb7c2f2?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-06',
+      catSlug: 'desserts',
+      name: 'Vanilla Cherry Cupcake',
+      description: 'Bánh cupcake vani ngọt ngào phủ kem bơ tươi và cherry mọng nước.',
+      basePrice: 8.0,
+      costPrice: 2.4,
+      imageUrl: 'https://images.unsplash.com/photo-1576618148400-f54bed99fcfd?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-07',
+      catSlug: 'desserts',
+      name: 'Belgian Waffles',
+      description: 'Bánh quế Bỉ nướng giòn rụm ăn kèm siro lá phong và bơ mặn.',
+      basePrice: 20.0,
+      costPrice: 6.0,
+      imageUrl: 'https://images.unsplash.com/photo-1562376552-0d160a2f238d?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-08',
+      catSlug: 'desserts',
+      name: 'Granola with Yoghurt',
+      description: 'Sữa chua không đường ăn kèm ngũ cốc Granola nhà làm và hạt óc chó.',
+      basePrice: 15.0,
+      costPrice: 4.5,
+      imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-09',
+      catSlug: 'desserts',
+      name: 'Muesli Bowl',
+      description: 'Muesli ngâm sữa hạnh nhân qua đêm ăn kèm hoa quả nhiệt đới.',
+      basePrice: 10.0,
+      costPrice: 3.1,
+      imageUrl: 'https://images.unsplash.com/photo-1511690656952-34342bb7c2f2?w=350&auto=format&fit=crop&q=80',
+    },
+    {
+      code: 'DES-10',
+      catSlug: 'desserts',
+      name: 'Waffles with Ice-cream',
+      description: 'Bánh waffle nóng giòn ăn kèm 2 viên kem gelato socola và dâu tây.',
+      basePrice: 10.0,
+      costPrice: 3.2,
+      imageUrl: 'https://images.unsplash.com/photo-1504113888839-1c8eb50233d3?w=350&auto=format&fit=crop&q=80',
     },
   ];
 
-  const seededItems = new Map<string, any>();
+  const itemMap = new Map<string, any>();
   for (const it of menuItemsData) {
+    const category = catMap.get(it.catSlug) || catMap.get('lunch');
     const item = await prisma.menuItem.upsert({
       where: {
         tenantId_code: {
@@ -497,151 +535,38 @@ async function main() {
         },
       },
       update: {
-        categoryId: it.categoryId,
+        categoryId: category.id,
         name: it.name,
         description: it.description,
         basePrice: it.basePrice,
         costPrice: it.costPrice,
         imageUrl: it.imageUrl,
+        isSoldOut: false,
       },
       create: {
         tenantId: tenant.id,
-        categoryId: it.categoryId,
+        categoryId: category.id,
         code: it.code,
         name: it.name,
         description: it.description,
         basePrice: it.basePrice,
         costPrice: it.costPrice,
         imageUrl: it.imageUrl,
+        isSoldOut: false,
       },
     });
-    seededItems.set(it.code, item);
-
-    for (let i = 0; i < it.modGroupIds.length; i++) {
-      const groupId = it.modGroupIds[i];
-      await prisma.itemModifierGroup.upsert({
-        where: {
-          menuItemId_modifierGroupId: {
-            menuItemId: item.id,
-            modifierGroupId: groupId,
-          },
-        },
-        update: { displayOrder: i + 1 },
-        create: {
-          menuItemId: item.id,
-          modifierGroupId: groupId,
-          displayOrder: i + 1,
-        },
-      });
-    }
+    itemMap.set(it.code, item);
   }
+  console.log(`✅ Seeded ${menuItemsData.length} Menu Items matching FE catalog`);
 
-  const item1 = seededItems.get('TEA-01');
-  const item2 = seededItems.get('CF-01');
-  const item3 = seededItems.get('CF-02');
-  console.log(`✅ Menu items seeded (upserted) with category & modifier relations`);
-
-  // 7. Ingredients & BOM Recipes (Idempotent Upsert)
-  const ingredientsData = [
-    {
-      code: 'ING-CF-01',
-      name: 'Hạt Cà Phê Robusta Nguyên Chất',
-      unit: 'g',
-      currentStock: 25000,
-      minStock: 5000,
-      costPerUnit: 250,
-    },
-    {
-      code: 'ING-MILK-01',
-      name: 'Sữa Đặc Ngôi Sao',
-      unit: 'ml',
-      currentStock: 15000,
-      minStock: 3000,
-      costPerUnit: 80,
-    },
-    {
-      code: 'ING-TEA-01',
-      name: 'Trà Đen Earl Grey Thượng Hạng',
-      unit: 'g',
-      currentStock: 10000,
-      minStock: 2000,
-      costPerUnit: 400,
-    },
-    {
-      code: 'ING-PEACH-01',
-      name: 'Đào Ngâm Rhodes',
-      unit: 'miếng',
-      currentStock: 500,
-      minStock: 100,
-      costPerUnit: 2500,
-    },
-  ];
-
-  const ingMap = new Map<string, any>();
-  for (const ing of ingredientsData) {
-    const record = await prisma.ingredient.upsert({
-      where: {
-        branchId_code: {
-          branchId: branch.id,
-          code: ing.code,
-        },
-      },
-      update: {
-        name: ing.name,
-        unit: ing.unit,
-        currentStock: ing.currentStock,
-        minStock: ing.minStock,
-        costPerUnit: ing.costPerUnit,
-      },
-      create: {
-        tenantId: tenant.id,
-        branchId: branch.id,
-        code: ing.code,
-        name: ing.name,
-        unit: ing.unit,
-        currentStock: ing.currentStock,
-        minStock: ing.minStock,
-        costPerUnit: ing.costPerUnit,
-      },
-    });
-    ingMap.set(ing.code, record);
-  }
-
-  const ingCoffee = ingMap.get('ING-CF-01');
-  const ingCondensedMilk = ingMap.get('ING-MILK-01');
-  const ingTeaLeaves = ingMap.get('ING-TEA-01');
-  const ingPeach = ingMap.get('ING-PEACH-01');
-
-  // Link BOM Recipes (Upsert)
-  const recipeList = [
-    { menuItemId: item1.id, ingredientId: ingTeaLeaves.id, quantity: 15 },
-    { menuItemId: item1.id, ingredientId: ingPeach.id, quantity: 2 },
-    { menuItemId: item2.id, ingredientId: ingCoffee.id, quantity: 25 },
-    { menuItemId: item2.id, ingredientId: ingCondensedMilk.id, quantity: 30 },
-    { menuItemId: item3.id, ingredientId: ingCoffee.id, quantity: 15 },
-    { menuItemId: item3.id, ingredientId: ingCondensedMilk.id, quantity: 45 },
-  ];
-
-  for (const r of recipeList) {
-    await prisma.recipe.upsert({
-      where: {
-        menuItemId_ingredientId: {
-          menuItemId: r.menuItemId,
-          ingredientId: r.ingredientId,
-        },
-      },
-      update: { quantity: r.quantity },
-      create: r,
-    });
-  }
-  console.log(`✅ Ingredients & BOM recipes seeded (upserted)`);
-
-  // 8. Membership Tiers & Sample Customer (Idempotent Upsert)
+  // ==========================================
+  // 7. MEMBERSHIP TIERS & CUSTOMERS (From FE Customers Directory)
+  // ==========================================
   const tiersData = [
-    { name: 'Đồng', minPoints: 0, discountRate: 0, color: '#94a3b8' },
-    { name: 'Bạc', minPoints: 100, discountRate: 5, color: '#38bdf8' },
-    { name: 'Vàng', minPoints: 300, discountRate: 10, color: '#f59e0b' },
-    { name: 'Kim Cương', minPoints: 800, discountRate: 15, color: '#a855f7' },
+    { name: 'Bronze', minPoints: 0, discountRate: 0, color: '#FF7A59' },
+    { name: 'Silver', minPoints: 100, discountRate: 5, color: '#94A3B8' },
+    { name: 'Gold', minPoints: 300, discountRate: 10, color: '#F59E0B' },
+    { name: 'Diamond', minPoints: 800, discountRate: 15, color: '#00A389' },
   ];
 
   const tierMap = new Map<string, any>();
@@ -669,55 +594,365 @@ async function main() {
     tierMap.set(t.name, tier);
   }
 
-  const goldTier = tierMap.get('Vàng');
+  const customersData = [
+    {
+      name: 'Uthman ibn Hunaif',
+      phone: '+84 678 890 000',
+      email: 'uthman.hunaif@gmail.com',
+      tierName: 'Diamond',
+      loyaltyPoints: 1240,
+      totalSpent: 1240.5,
+    },
+    {
+      name: "Bashir ibn Sa'ad",
+      phone: '+84 912 345 678',
+      email: 'bashir.saad@outlook.com',
+      tierName: 'Gold',
+      loyaltyPoints: 780,
+      totalSpent: 780.0,
+    },
+    {
+      name: 'Ali Raza',
+      phone: '+84 342 556 555',
+      email: 'ali.raza@techcorp.vn',
+      tierName: 'Gold',
+      loyaltyPoints: 620,
+      totalSpent: 620.0,
+    },
+    {
+      name: 'Khunais ibn Hudhafa',
+      phone: '+84 905 112 233',
+      email: 'khunais.h@gmail.com',
+      tierName: 'Silver',
+      loyaltyPoints: 340,
+      totalSpent: 340.0,
+    },
+    {
+      name: "Mus'ab ibn Umayr",
+      phone: '+84 800 563 554',
+      email: 'musab.umayr@yahoo.com',
+      tierName: 'Silver',
+      loyaltyPoints: 295,
+      totalSpent: 295.0,
+    },
+    {
+      name: 'Shuja ibn Wahb',
+      phone: '+84 779 881 202',
+      email: 'shuja.wahb@domain.com',
+      tierName: 'Bronze',
+      loyaltyPoints: 110,
+      totalSpent: 110.0,
+    },
+    {
+      name: 'Sarah Nguyen',
+      phone: '+84 938 123 456',
+      email: 'sarah.nguyen@email.com',
+      tierName: 'Diamond',
+      loyaltyPoints: 1560,
+      totalSpent: 1560.0,
+    },
+    {
+      name: 'Michael Tran',
+      phone: '+84 909 876 543',
+      email: 'michael.tran@fnb.vn',
+      tierName: 'Gold',
+      loyaltyPoints: 890,
+      totalSpent: 890.0,
+    },
+  ];
 
-  const customer = await prisma.customer.upsert({
-    where: {
-      tenantId_phone: {
-        tenantId: tenant.id,
-        phone: '0987654321',
+  const customerMap = new Map<string, any>();
+  for (const c of customersData) {
+    const tier = tierMap.get(c.tierName);
+    const customer = await prisma.customer.upsert({
+      where: {
+        tenantId_phone: {
+          tenantId: tenant.id,
+          phone: c.phone,
+        },
       },
-    },
-    update: {
-      tierId: goldTier.id,
-      name: 'Nguyễn Văn Anh',
-      email: 'vananh@gmail.com',
-      loyaltyPoints: 340,
-      totalSpent: 4850000,
-    },
-    create: {
-      tenantId: tenant.id,
-      tierId: goldTier.id,
-      name: 'Nguyễn Văn Anh',
-      phone: '0987654321',
-      email: 'vananh@gmail.com',
-      loyaltyPoints: 340,
-      totalSpent: 4850000,
-    },
-  });
-  console.log(`✅ Membership tiers & customer ${customer.name} seeded (upserted)`);
+      update: {
+        name: c.name,
+        email: c.email,
+        tierId: tier?.id,
+        loyaltyPoints: c.loyaltyPoints,
+        totalSpent: c.totalSpent,
+      },
+      create: {
+        tenantId: tenant.id,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        tierId: tier?.id,
+        loyaltyPoints: c.loyaltyPoints,
+        totalSpent: c.totalSpent,
+      },
+    });
+    customerMap.set(c.name, customer);
+  }
+  console.log(`✅ Seeded ${customersData.length} Customers across VIP Tiers`);
 
-  // 9. Sample Vouchers (Idempotent Upsert)
+  // ==========================================
+  // 8. LIVE SESSIONS & ORDERS (Mirroring Screenshot 1 Order Line)
+  // ==========================================
+  // Order #FO030 (Table #4 - 2 People, 4 ordered items)
+  const table4 = tableMap.get('Table #4');
+  const custKhunais = customerMap.get('Khunais ibn Hudhafa');
+
+  if (table4) {
+    const session4 = await prisma.orderSession.upsert({
+      where: {
+        branchId_sessionCode: {
+          branchId: branch.id,
+          sessionCode: 'SES-TABLE-04',
+        },
+      },
+      update: {
+        tableId: table4.id,
+        customerId: custKhunais?.id,
+        status: SessionStatus.OPEN,
+        subTotal: 67.0,
+        discountAmount: 0.0,
+        finalAmount: 72.0,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        tableId: table4.id,
+        customerId: custKhunais?.id,
+        sessionCode: 'SES-TABLE-04',
+        status: SessionStatus.OPEN,
+        subTotal: 67.0,
+        discountAmount: 0.0,
+        finalAmount: 72.0,
+      },
+    });
+
+    const orderFO030 = await prisma.order.upsert({
+      where: {
+        branchId_orderCode: {
+          branchId: branch.id,
+          orderCode: '#FO030',
+        },
+      },
+      update: {
+        sessionId: session4.id,
+        status: OrderStatus.PREPARING,
+        totalAmount: 72.0,
+        note: 'Dine-in Table #04 • 2 People',
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        sessionId: session4.id,
+        orderCode: '#FO030',
+        orderType: OrderType.DINE_IN,
+        status: OrderStatus.PREPARING,
+        totalAmount: 72.0,
+        note: 'Dine-in Table #04 • 2 People',
+      },
+    });
+
+    // Seed Order Items for #FO030 matching Screenshot 1
+    const ticketItems = [
+      { code: 'PASTA-01', name: 'Pasta with Roast Beef', price: 10.0, qty: 2 },
+      { code: 'RICE-01', name: 'Shrimp Rice Bowl', price: 6.0, qty: 2 },
+      { code: 'DES-02', name: 'Apple Stuffed Pancake', price: 35.0, qty: 1 },
+      { code: 'SALAD-02', name: 'Vegetable Shrimp', price: 10.0, qty: 1 },
+    ];
+
+    for (const t of ticketItems) {
+      const item = itemMap.get(t.code);
+      if (item) {
+        await prisma.orderItem.create({
+          data: {
+            orderId: orderFO030.id,
+            menuItemId: item.id,
+            itemName: t.name,
+            unitPrice: t.price,
+            quantity: t.qty,
+            totalPrice: t.price * t.qty,
+            status: OrderItemStatus.PREPARING,
+          },
+        });
+      }
+    }
+  }
+
+  // Order #FO027 (Table #3 - In Kitchen / 8 Items)
+  const table3 = tableMap.get('Table #3');
+  if (table3) {
+    const session3 = await prisma.orderSession.upsert({
+      where: {
+        branchId_sessionCode: {
+          branchId: branch.id,
+          sessionCode: 'SES-TABLE-03',
+        },
+      },
+      update: {
+        tableId: table3.id,
+        status: SessionStatus.OPEN,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        tableId: table3.id,
+        sessionCode: 'SES-TABLE-03',
+        status: SessionStatus.OPEN,
+        subTotal: 95.0,
+        finalAmount: 102.6,
+      },
+    });
+
+    await prisma.order.upsert({
+      where: {
+        branchId_orderCode: {
+          branchId: branch.id,
+          orderCode: '#FO027',
+        },
+      },
+      update: {
+        sessionId: session3.id,
+        status: OrderStatus.PREPARING,
+        totalAmount: 102.6,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        sessionId: session3.id,
+        orderCode: '#FO027',
+        orderType: OrderType.DINE_IN,
+        status: OrderStatus.PREPARING,
+        totalAmount: 102.6,
+        note: '8 Items • In Kitchen (2 mins ago)',
+      },
+    });
+  }
+
+  // Order #FO028 (Table #7 - Wait List / 3 Items)
+  const table7 = tableMap.get('Table #7');
+  if (table7) {
+    const session7 = await prisma.orderSession.upsert({
+      where: {
+        branchId_sessionCode: {
+          branchId: branch.id,
+          sessionCode: 'SES-TABLE-07',
+        },
+      },
+      update: {
+        tableId: table7.id,
+        status: SessionStatus.OPEN,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        tableId: table7.id,
+        sessionCode: 'SES-TABLE-07',
+        status: SessionStatus.OPEN,
+        subTotal: 42.0,
+        finalAmount: 45.36,
+      },
+    });
+
+    await prisma.order.upsert({
+      where: {
+        branchId_orderCode: {
+          branchId: branch.id,
+          orderCode: '#FO028',
+        },
+      },
+      update: {
+        sessionId: session7.id,
+        status: OrderStatus.PENDING,
+        totalAmount: 45.36,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        sessionId: session7.id,
+        orderCode: '#FO028',
+        orderType: OrderType.DINE_IN,
+        status: OrderStatus.PENDING,
+        totalAmount: 45.36,
+        note: '3 Items • Wait List (Just Now)',
+      },
+    });
+  }
+
+  // Order #FO019 (Table #9 - Ready / 2 Items)
+  const table9 = tableMap.get('Table #9');
+  if (table9) {
+    const session9 = await prisma.orderSession.upsert({
+      where: {
+        branchId_sessionCode: {
+          branchId: branch.id,
+          sessionCode: 'SES-TABLE-09',
+        },
+      },
+      update: {
+        tableId: table9.id,
+        status: SessionStatus.OPEN,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        tableId: table9.id,
+        sessionCode: 'SES-TABLE-09',
+        status: SessionStatus.OPEN,
+        subTotal: 30.0,
+        finalAmount: 32.4,
+      },
+    });
+
+    await prisma.order.upsert({
+      where: {
+        branchId_orderCode: {
+          branchId: branch.id,
+          orderCode: '#FO019',
+        },
+      },
+      update: {
+        sessionId: session9.id,
+        status: OrderStatus.READY,
+        totalAmount: 32.4,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        sessionId: session9.id,
+        orderCode: '#FO019',
+        orderType: OrderType.DINE_IN,
+        status: OrderStatus.READY,
+        totalAmount: 32.4,
+        note: '2 Items • Ready (25 mins ago)',
+      },
+    });
+  }
+  console.log(`✅ Seeded Live Order Queue (#FO027, #FO028, #FO019, #FO030)`);
+
+  // ==========================================
+  // 9. PROMOTIONAL VOUCHERS
+  // ==========================================
   const vouchersData = [
     {
-      code: 'CHAO2026',
-      description: 'Giảm 20% tối đa 50.000đ cho đơn hàng từ 100.000đ',
+      code: 'TASTY2026',
+      description: 'Giảm 20% tối đa $10 cho đơn hàng từ $25',
       type: VoucherType.PERCENT,
       value: 20,
-      maxDiscount: 50000,
-      minOrderVal: 100000,
+      maxDiscount: 10,
+      minOrderVal: 25,
       usageLimit: 500,
       startDate: new Date(),
       endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       isActive: true,
     },
     {
-      code: 'GIAM30K',
-      description: 'Giảm trực tiếp 30.000đ cho hóa đơn từ 150.000đ',
+      code: 'WELCOME5',
+      description: 'Giảm ngay $5 cho khách hàng mới',
       type: VoucherType.FIXED,
-      value: 30000,
+      value: 5,
       maxDiscount: null,
-      minOrderVal: 150000,
+      minOrderVal: 15,
       usageLimit: 200,
       startDate: new Date(),
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -759,9 +994,9 @@ async function main() {
       },
     });
   }
-  console.log(`✅ Promotional vouchers seeded (upserted)`);
+  console.log(`✅ Seeded Promotional Vouchers (TASTY2026, WELCOME5)`);
 
-  console.log('🎉 Seed completed successfully!');
+  console.log('🎉 Seed completed successfully into database!');
 }
 
 main()
