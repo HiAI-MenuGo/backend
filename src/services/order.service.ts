@@ -46,9 +46,14 @@ async function resolveBranch(branchId: string) {
 
   if (!branch && branchId === 'default-branch') {
     branch = await prisma.branch.findFirst({
-      where: { isActive: true },
-      orderBy: { createdAt: 'asc' },
+      where: { isActive: true, orders: { some: {} } },
     });
+    if (!branch) {
+      branch = await prisma.branch.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
   }
 
   if (!branch) {
