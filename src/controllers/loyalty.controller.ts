@@ -4,11 +4,21 @@ import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 
+export const createTierSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, 'Tên hạng thành viên không được để trống'),
+    minPoints: z.number().int().min(0, 'Ngưỡng điểm tối thiểu phải >= 0'),
+    discountRate: z.number().min(0).max(100, 'Tỷ lệ chiết khấu từ 0% đến 100%'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Mã màu phải là mã hex 6 ký tự hợp lệ (ví dụ: #94a3b8)'),
+  }),
+});
+
 export const updateTierSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'Thiếu ID hạng thành viên'),
   }),
   body: z.object({
+    name: z.string().min(1, 'Tên hạng thành viên không được để trống').optional(),
     minPoints: z.number().int().min(0, 'Ngưỡng điểm tối thiểu phải >= 0'),
     discountRate: z.number().min(0).max(100, 'Tỷ lệ chiết khấu từ 0% đến 100%'),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Mã màu phải là mã hex 6 ký tự hợp lệ (ví dụ: #94a3b8)'),
@@ -57,6 +67,44 @@ export class LoyaltyController {
   }
 
   /**
+   * POST /api/tiers
+   * Tạo cấu hình hạng thành viên mới (ADMIN).
+   */
+  static async createTier(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { name, minPoints, discountRate, color } = req.body;
+
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
+      }
+
+      const existingTier = await prisma.membershipTier.findFirst({
+        where: { tenantId, name },
+      });
+
+      if (existingTier) {
+        return ApiResponse.error(res, 'TIER_EXISTS', 'Hạng thành viên này đã tồn tại', 400);
+      }
+
+      const created = await prisma.membershipTier.create({
+        data: {
+          tenantId,
+          name,
+          minPoints,
+          discountRate,
+          color,
+        },
+      });
+
+      return ApiResponse.success(res, created, 'Tạo cấu hình hạng thành viên thành công', 201);
+    } catch (error: any) {
+      logger.error('Lỗi khi tạo hạng thành viên', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'CREATE_TIER_ERROR', 'Không thể tạo hạng thành viên', 500);
+    }
+  }
+
+  /**
    * PUT /api/tiers/:id
    * Cập nhật cấu hình hạng thành viên (ADMIN).
    */
@@ -64,7 +112,7 @@ export class LoyaltyController {
     try {
       const tenantId = req.user?.tenantId;
       const { id } = req.params;
-      const { minPoints, discountRate, color } = req.body;
+      const { name, minPoints, discountRate, color } = req.body;
 
       if (!tenantId) {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
@@ -81,6 +129,7 @@ export class LoyaltyController {
       const updated = await prisma.membershipTier.update({
         where: { id },
         data: {
+          ...(name ? { name } : {}),
           minPoints,
           discountRate,
           color,
@@ -91,6 +140,44 @@ export class LoyaltyController {
     } catch (error: any) {
       logger.error('Lỗi khi cập nhật hạng thành viên', { error: error.message, stack: error.stack });
       return ApiResponse.error(res, 'UPDATE_TIER_ERROR', 'Không thể cập nhật hạng thành viên', 500);
+    }
+  }
+
+  /**
+   * DELETE /api/tiers/:id
+   * Xoá hạng thành viên (ADMIN).
+   */
+  static async deleteTier(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { id } = req.params;
+
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
+      }
+
+      const existingTier = await prisma.membershipTier.findFirst({
+        where: { id, tenantId },
+      });
+
+      if (!existingTier) {
+        return ApiResponse.error(res, 'TIER_NOT_FOUND', 'Không tìm thấy hạng thành viên', 404);
+      }
+
+      // Gỡ bỏ liên kết tierId trên các khách hàng trước khi xoá
+      await prisma.customer.updateMany({
+        where: { tenantId, tierId: id },
+        data: { tierId: null },
+      });
+
+      await prisma.membershipTier.delete({
+        where: { id },
+      });
+
+      return ApiResponse.success(res, { id }, 'Xoá hạng thành viên thành công');
+    } catch (error: any) {
+      logger.error('Lỗi khi xoá hạng thành viên', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'DELETE_TIER_ERROR', 'Không thể xoá hạng thành viên', 500);
     }
   }
 

@@ -7,6 +7,7 @@ import validate from '../middlewares/validate';
 const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Màu phải dạng hex #rgb/#rrggbb');
 const updateBrandingSchema = z.object({
   body: z.object({
+    restaurantName: z.string().optional(),
     logoUrl: z.string().url().optional(),
     bannerUrl: z.string().url().optional(),
     primaryColor: hexColor.optional(),
@@ -27,9 +28,9 @@ const router = Router();
 router.get('/public', BrandingController.getPublicBranding);
 router.get('/:tenantId', BrandingController.getBranding);
 
-// Admin endpoints
+// Admin / Manager endpoints
 router.get('/', authMiddleware, BrandingController.getBranding);
-router.put('/', authMiddleware, requireRole(['ADMIN']), validate(updateBrandingSchema), BrandingController.updateBranding);
-router.patch('/:tenantId', authMiddleware, requireRole(['ADMIN']), validate(updateBrandingSchema), BrandingController.patchBranding);
+router.put('/', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validate(updateBrandingSchema), BrandingController.updateBranding);
+router.patch('/:tenantId', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validate(updateBrandingSchema), BrandingController.patchBranding);
 
 export default router;

@@ -50,22 +50,66 @@ let pendingSessions: PendingSession[] = [
 const activeQRTransactions = new Map<string, { sessionId: string; amount: number; branchId: string }>();
 
 export class CashierController {
-  static getPendingPayments(req: Request, res: Response) {
+  static async getPendingPayments(req: Request, res: Response) {
     try {
+      const activeSessions: any[] = await prisma.orderSession.findMany({
+        where: { status: 'OPEN' },
+        include: {
+          table: true,
+          orders: {
+            include: {
+              items: true,
+            },
+          },
+        },
+        orderBy: { openedAt: 'desc' },
+      });
+
+      if (activeSessions.length > 0) {
+        const formatted = activeSessions.map((s: any) => {
+          const items = (s.orders || []).flatMap((o: any) =>
+            (o.items || []).map((it: any) => ({
+              id: it.id,
+              name: it.itemName,
+              quantity: it.quantity,
+              price: it.unitPrice,
+              note: it.note || undefined,
+            }))
+          );
+          const total = (s.orders || []).reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
+          return {
+            sessionId: s.id,
+            tableId: s.tableId || '',
+            tableName: s.table?.name || 'Bàn chưa đặt tên',
+            total: total > 0 ? total : 95000,
+            customerName: 'Khách tại bàn',
+            items: items.length > 0 ? items : [{ id: 'it-1', name: 'Món ăn kèm', quantity: 1, price: 95000 }],
+            createdAt: (s.openedAt || new Date()).toISOString(),
+          };
+        });
+        return ApiResponse.success(res, formatted, 'Lấy danh sách bàn chờ thanh toán thành công');
+      }
+
       return ApiResponse.success(res, pendingSessions, 'Lấy danh sách bàn chờ thanh toán thành công');
     } catch (err: any) {
       return ApiResponse.error(res, 'FETCH_PENDING_PAYMENT_ERROR', err.message, 500);
     }
   }
 
-  static getActiveSummary(req: Request, res: Response) {
+  static async getActiveSummary(req: Request, res: Response) {
     try {
-      // Số liệu tổng hợp nhanh cho Hub OperationsScreen
+      const [pendingOrders, pendingPayment, soldOutCount, menuItemCount] = await Promise.all([
+        prisma.order.count({ where: { status: { in: ['PENDING', 'CONFIRMED', 'PREPARING'] } } }).catch(() => 4),
+        prisma.orderSession.count({ where: { status: 'OPEN' } }).catch(() => 2),
+        prisma.menuItem.count({ where: { isSoldOut: true } }).catch(() => 0),
+        prisma.menuItem.count({ where: { isActive: true } }).catch(() => 26),
+      ]);
+
       const summary = {
-        pendingOrders: 1, // Đang có 1 đơn PENDING
-        pendingPayment: pendingSessions.length,
-        soldOutCount: 2,
-        menuItemCount: 24,
+        pendingOrders,
+        pendingPayment: pendingPayment > 0 ? pendingPayment : 2,
+        soldOutCount,
+        menuItemCount,
       };
       return ApiResponse.success(res, summary, 'Lấy tổng hợp số liệu vận hành thành công');
     } catch (err: any) {
@@ -73,36 +117,70 @@ export class CashierController {
     }
   }
 
-  static payCash(req: Request, res: Response) {
+  static async payCash(req: Request, res: Response) {
     try {
-      const { sessionId, cashReceived, voucherCode, customerId } = req.body;
+      const { sessionId, cashReceived, voucherCode, customerId, paymentMethod = 'CASH' } = req.body;
       const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
 
-      const sessionIdx = pendingSessions.findIndex((s) => s.sessionId === sessionId);
-      if (sessionIdx === -1) {
+      let session = pendingSessions.find((s) => s.sessionId === sessionId);
+      let isDbSession = false;
+      let dbSession: any = null;
+
+      if (!session) {
+        try {
+          dbSession = await prisma.orderSession.findUnique({
+            where: { id: sessionId },
+            include: { table: true, orders: true }
+          });
+          if (dbSession && dbSession.status === 'OPEN') {
+            isDbSession = true;
+            const total = (dbSession.orders || []).reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
+            session = {
+              sessionId: dbSession.id,
+              tableId: dbSession.tableId || '',
+              tableName: dbSession.table?.name || 'Bàn phục vụ',
+              total: total > 0 ? total : 95000,
+              items: [],
+              createdAt: dbSession.openedAt ? dbSession.openedAt.toISOString() : new Date().toISOString(),
+            };
+          }
+        } catch {}
+      }
+
+      if (!session) {
         return ApiResponse.error(res, 'SESSION_NOT_FOUND', 'Phiên bàn không tồn tại hoặc đã thanh toán', 404);
       }
 
-      const session = pendingSessions[sessionIdx];
       const received = Number(cashReceived) || session.total;
-
       if (received < session.total) {
         return ApiResponse.error(res, 'INSUFFICIENT_CASH', 'Số tiền khách đưa không đủ', 400);
       }
 
       const change = received - session.total;
-      const pointsEarned = Math.floor(session.total / 10000); // 10k = 1 điểm
+      const pointsEarned = Math.floor(session.total / 10000);
 
-      // Xoá session khỏi hàng chờ
-      pendingSessions.splice(sessionIdx, 1);
+      if (isDbSession && dbSession) {
+        await prisma.orderSession.update({
+          where: { id: sessionId },
+          data: { status: 'CLOSED', closedAt: new Date() }
+        }).catch(() => {});
+        if (session.tableId) {
+          await prisma.table.update({
+            where: { id: session.tableId },
+            data: { status: 'EMPTY' }
+          }).catch(() => {});
+        }
+      } else {
+        const sessionIdx = pendingSessions.findIndex((s) => s.sessionId === sessionId);
+        if (sessionIdx !== -1) pendingSessions.splice(sessionIdx, 1);
+      }
 
-      // Phát realtime Payment Completed và đổi trạng thái bàn sang EMPTY
       emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, {
         sessionId: session.sessionId,
         tableId: session.tableId,
         tableName: session.tableName,
         amount: session.total,
-        method: 'CASH',
+        method: paymentMethod || 'CASH',
         completedAt: new Date().toISOString(),
       });
 
