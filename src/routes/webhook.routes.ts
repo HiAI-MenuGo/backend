@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { WebhookController, createWebhookSchema } from '../controllers/webhook.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth.middleware';
+import { enforceTenantIsolation } from '../middlewares/tenantIsolation';
 import { validate } from '../middlewares/validate';
 
 const webhookRouter = Router();
 
-// Tất cả các endpoints Webhook yêu cầu quyền ADMIN
-webhookRouter.use(authMiddleware, requireRole(['ADMIN']));
+// Tất cả các endpoints Webhook yêu cầu quyền ADMIN + tenant isolation
+webhookRouter.use(authMiddleware, enforceTenantIsolation, requireRole(['ADMIN']));
 
 webhookRouter.get('/', WebhookController.getWebhooks);
 webhookRouter.post('/', validate(createWebhookSchema), WebhookController.createWebhook);

@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
+import { resolveTableScope } from '../utils/tableScope';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_hiai_menugo_2026';
 
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -12,7 +16,17 @@ export class BrandingController {
    */
   static async getBranding(req: Request, res: Response) {
     try {
-      const tenantId = req.params.tenantId || req.user?.tenantId || (req.query.tenantId as string);
+      const paramTenant = req.params.tenantId || (req.query.tenantId as string);
+      const userTenant = req.user?.tenantId;
+
+      // Auth staff: chỉ được xem branding quán mình (trừ PLATFORM_ADMIN)
+      if (userTenant && req.user?.role !== 'PLATFORM_ADMIN') {
+        if (paramTenant && paramTenant !== userTenant) {
+          return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
+        }
+      }
+
+      const tenantId = paramTenant || userTenant;
 
       if (!tenantId) {
         return ApiResponse.error(res, 'MISSING_TENANT', 'Thiếu mã định danh quán', 400);
@@ -48,7 +62,32 @@ export class BrandingController {
         return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
       }
 
-      return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+      // Lấy địa chỉ và thông tin chi nhánh đang kích hoạt
+      const branchQueryId = (req.query.branchId as string) || (req.params.branchId as string);
+      let branch = null;
+      if (branchQueryId && branchQueryId !== 'default-branch') {
+        branch = await prisma.branch.findFirst({
+          where: { tenantId, id: branchQueryId, isActive: true },
+        });
+      }
+      if (!branch) {
+        branch = await prisma.branch.findFirst({
+          where: { tenantId, isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+
+      const responsePayload = {
+        ...branding,
+        restaurantName: branding.tenant?.name || 'MenuGO',
+        branchName: branch?.name || null,
+        branchCode: branch?.code || null,
+        branchId: branch?.id || null,
+        address: branch?.address || '170 Bàu Cát, Phường 14, Tân Bình, Hồ Chí Minh',
+        phone: branch?.phone || null,
+      };
+
+      return ApiResponse.success(res, responsePayload, 'Thông tin thương hiệu quán');
     } catch (error: any) {
       logger.error('getBranding failed', { stack: error?.stack });
       return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);
@@ -61,47 +100,80 @@ export class BrandingController {
    */
   static async getPublicBranding(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || 'default-branch';
-      let branch = await prisma.branch.findUnique({
-        where: { id: branchId },
-      });
-
-      if (!branch && branchId === 'default-branch') {
-        branch = await prisma.branch.findFirst({
-          where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
-        });
+      // Nếu caller đã đăng nhập (staff): khóa theo tenant của token, chặn dò branch tenant khác
+      // qua branchId/code đoán được. QR khách không có token -> đi nhánh tableId/query bên dưới.
+      let authTenant: string | null = null;
+      try {
+        const header = req.headers.authorization || '';
+        const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+        if (token) {
+          const decoded = jwt.verify(token, JWT_SECRET) as any;
+          if (decoded?.tenantId) authTenant = String(decoded.tenantId);
+        }
+      } catch {
+        authTenant = null;
       }
 
-      const tenantId = (req.query.tenantId as string) || branch?.tenantId;
+      // Ưu tiên tableId (QR quét bàn): lookup bàn -> tenant/branch chính xác, không đoán được
+      const tableId = (req.query.tableId as string) || '';
+      let branch: any = null;
+      let resolvedTenantId = authTenant || '';
 
-      if (!tenantId) {
-        const tenant = await prisma.tenant.findFirst({ where: { status: 'ACTIVE' } });
-        if (!tenant) {
-          return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy quán ăn', 404);
+      if (tableId) {
+        const scope = await resolveTableScope(tableId);
+        if (!scope) {
+          return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Bàn không tồn tại', 404);
         }
-        const branding = await prisma.tenantBranding.findUnique({
-          where: { tenantId: tenant.id },
-          select: {
-            tenantId: true,
-            logoUrl: true,
-            bannerUrl: true,
-            primaryColor: true,
-            secondaryColor: true,
-            accentColor: true,
-            bankCode: true,
-            bankAccountNo: true,
-            bankAccountName: true,
-            wifiSsid: true,
-            footerText: true,
-            tenant: { select: { name: true, code: true, slug: true, status: true } },
-          },
+        // Bàn QR phải thuộc tenant của staff đã login (nếu có) — chặn dùng QR quán A
+        // với token staff quán B để dò branding
+        if (authTenant && scope.tenantId !== authTenant) {
+          return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Bàn không tồn tại', 404);
+        }
+        resolvedTenantId = scope.tenantId;
+        branch = await prisma.branch.findFirst({
+          where: { id: scope.branchId, tenantId: scope.tenantId, isActive: true },
         });
-        return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+      } else {
+        const branchIdParam = (req.query.branchId as string) || '';
+        let qTenant = (req.query.tenantId as string) || '';
+        if (qTenant === 'default-tenant') qTenant = '';
+        // Staff đã login: ép tenant theo token, bỏ qua tenantId query lạ
+        if (authTenant) qTenant = authTenant;
+
+        if (branchIdParam && branchIdParam !== 'default-branch') {
+          // QR ẩn danh chỉ gửi branch code mà không rõ tenant -> từ chối
+          // (branch code đoán được, trước đây trả branding bừa -> leak cross-tenant)
+          if (!qTenant) {
+            return ApiResponse.error(res, 'MISSING_TENANT', 'Thiếu định danh quán (tableId hoặc tenantId)', 400);
+          }
+          branch = await prisma.branch.findFirst({
+            where: {
+              OR: [{ id: branchIdParam }, { code: branchIdParam }],
+              tenantId: qTenant,
+              isActive: true,
+            },
+          });
+          if (!branch) {
+            return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không tồn tại', 404);
+          }
+        } else if (qTenant) {
+          branch = await prisma.branch.findFirst({
+            where: { tenantId: qTenant, isActive: true },
+            orderBy: { createdAt: 'asc' },
+          });
+        }
+
+        resolvedTenantId = qTenant || branch?.tenantId || '';
+      }
+
+      // Không fallback tenant đầu tiên nữa (từng leak cross-tenant): bắt buộc định danh rõ
+      const effectiveTenantId = resolvedTenantId || branch?.tenantId;
+      if (!effectiveTenantId) {
+        return ApiResponse.error(res, 'MISSING_TENANT', 'Thiếu định danh quán (tableId hoặc tenantId)', 400);
       }
 
       const branding = await prisma.tenantBranding.findUnique({
-        where: { tenantId },
+        where: { tenantId: effectiveTenantId },
         select: {
           tenantId: true,
           logoUrl: true,
@@ -122,7 +194,17 @@ export class BrandingController {
         return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy cấu hình thương hiệu', 404);
       }
 
-      return ApiResponse.success(res, branding, 'Thông tin thương hiệu quán');
+      const responsePayload = {
+        ...branding,
+        restaurantName: branding.tenant?.name || 'MenuGO',
+        branchName: branch?.name || null,
+        branchCode: branch?.code || null,
+        branchId: branch?.id || null,
+        address: branch?.address || '170 Bàu Cát, Phường 14, Tân Bình, Hồ Chí Minh',
+        phone: branch?.phone || null,
+      };
+
+      return ApiResponse.success(res, responsePayload, 'Thông tin thương hiệu quán');
     } catch (error: any) {
       logger.error('getPublicBranding failed', { stack: error?.stack });
       return ApiResponse.error(res, 'DB_ERROR', 'Lỗi truy vấn thương hiệu', 500);

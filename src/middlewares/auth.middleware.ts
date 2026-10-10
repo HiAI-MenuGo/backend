@@ -45,3 +45,19 @@ export function requireRole(allowed: Array<TokenPayload['role']>) {
     return next();
   };
 }
+
+/** Optional auth: verify JWT if token exists, inject req.user, don't fail if missing. */
+export function optionalAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    if (decoded.userId && decoded.tenantId && decoded.role) {
+      req.user = decoded;
+    }
+  } catch {
+    // ignore invalid/expired token for optional auth
+  }
+  return next();
+}

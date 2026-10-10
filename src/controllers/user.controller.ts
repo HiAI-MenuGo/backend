@@ -25,7 +25,8 @@ export class UserController {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenant', 401);
       }
 
-      const { branchId, role, search, isActive } = req.query;
+      const branchId = (req.query.branchId as string) || (req.headers['x-branch-id'] as string);
+      const { role, search, isActive } = req.query;
 
       const where: any = { tenantId };
       // MANAGER chỉ thấy nhân viên chi nhánh mình.
@@ -34,7 +35,7 @@ export class UserController {
           return ApiResponse.error(res, 'FORBIDDEN', 'Tài khoản quản lý chưa được gán chi nhánh', 403);
         }
         where.branchId = req.user.branchId;
-      } else if (branchId) {
+      } else if (branchId && branchId !== 'ALL' && branchId !== 'default-branch') {
         where.branchId = String(branchId);
       }
       if (role) where.role = role as UserRole;
@@ -134,10 +135,22 @@ export class UserController {
 
       const passwordHash = await bcrypt.hash(password, 10);
 
+      // Validate branch thuộc tenant (chặn gán user sang branch quán khác)
+      let targetBranch: string | null = req.user?.branchId || null;
+      if (branchId) {
+        const branch = await prisma.branch.findFirst({
+          where: { id: branchId, tenantId, isActive: true },
+        });
+        if (!branch) {
+          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không tồn tại', 404);
+        }
+        targetBranch = branch.id;
+      }
+
       const newUser = await prisma.tenantUser.create({
         data: {
           tenantId,
-          branchId: branchId || req.user?.branchId || null,
+          branchId: targetBranch,
           email,
           name,
           phone,
@@ -203,7 +216,19 @@ export class UserController {
       if (name) updateData.name = name;
       if (phone !== undefined) updateData.phone = phone;
       if (role) updateData.role = role as UserRole;
-      if (branchId !== undefined) updateData.branchId = branchId;
+      if (branchId !== undefined) {
+        if (branchId) {
+          const branch = await prisma.branch.findFirst({
+            where: { id: branchId, tenantId, isActive: true },
+          });
+          if (!branch) {
+            return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không tồn tại', 404);
+          }
+          updateData.branchId = branch.id;
+        } else {
+          updateData.branchId = null;
+        }
+      }
       if (isActive !== undefined) updateData.isActive = isActive;
       if (password) {
         updateData.passwordHash = await bcrypt.hash(password, 10);

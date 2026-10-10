@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import ApiResponse from '../utils/response';
 import { emitToBranch, SOCKET_EVENTS } from '../socket';
+import { getTenantContext } from '../middlewares/tenantIsolation';
 
 export interface TableItem {
   id: string;
@@ -29,10 +30,36 @@ import prisma from '../utils/prisma';
 export class TableController {
   static async getTables(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || 'default-branch';
+      const { branchId, tenantId } = getTenantContext(req);
+      const role = req.tenantContext!.role;
+      const isPrivileged = role === 'ADMIN' || role === 'PLATFORM_ADMIN';
+      const requested = (req.query.branchId as string) || (req.headers['x-branch-id'] as string);
+      // Role thường khóa đúng branch của mình (bỏ qua x-branch-id: ALL mặc định của frontend).
+      // ADMIN được xem all-branch hoặc branch chỉ định trong tenant (tenantId luôn AND nên branch
+      // tenant khác trả rỗng, không leak).
+      const whereClause: any = { tenantId };
+      if (isPrivileged) {
+        if (requested && requested !== 'ALL' && requested !== 'default-branch') {
+          whereClause.branchId = requested;
+        } else if (branchId && branchId !== 'ALL' && branchId !== 'default-branch') {
+          whereClause.branchId = branchId;
+        }
+      } else {
+        whereClause.branchId = branchId;
+      }
+
       const dbTables = await prisma.table.findMany({
-        where: branchId && branchId !== 'default-branch' ? { branchId } : undefined,
-        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+        where: whereClause,
+        include: {
+          branch: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+        orderBy: [{ branchId: 'asc' }, { code: 'asc' }, { name: 'asc' }],
       });
 
       if (dbTables.length > 0) {
@@ -40,14 +67,18 @@ export class TableController {
           id: t.id,
           name: t.name,
           status: t.status as 'EMPTY' | 'OCCUPIED' | 'RESERVED',
-          branchId: t.branchId || branchId,
+          branchId: t.branchId,
+          branchName: t.branch?.name,
+          branchCode: t.branch?.code,
           customerCount: t.capacity,
           updatedAt: t.updatedAt.toISOString(),
         }));
         return ApiResponse.success(res, formatted, 'Lấy danh sách bàn thành công');
       }
 
-      const list = tables.filter((t) => t.branchId === branchId);
+      // Fallback in-memory (dev): filter theo scope đã tính ở whereClause
+      const fallbackBranch = (whereClause as any).branchId as string | undefined;
+      const list = fallbackBranch ? tables.filter((t) => t.branchId === fallbackBranch) : tables;
       return ApiResponse.success(res, list, 'Lấy danh sách bàn thành công');
     } catch (err: any) {
       return ApiResponse.error(res, 'FETCH_TABLES_ERROR', err.message, 500);
@@ -58,7 +89,7 @@ export class TableController {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
+      const { branchId } = getTenantContext(req);
 
       if (!status || !['EMPTY', 'OCCUPIED', 'RESERVED'].includes(status)) {
         return ApiResponse.error(res, 'INVALID_STATUS', 'Trạng thái bàn không hợp lệ', 400);
@@ -66,8 +97,13 @@ export class TableController {
 
       let updatedTable: any = null;
       try {
+        // Scope theo branch: chặn staff branch A đổi trạng thái bàn branch B
+        const owned = await prisma.table.findFirst({ where: { id, branchId }, select: { id: true } });
+        if (!owned) {
+          return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Không tìm thấy bàn', 404);
+        }
         const dbTable = await prisma.table.update({
-          where: { id },
+          where: { id: owned.id },
           data: { status },
         });
 
@@ -86,7 +122,7 @@ export class TableController {
           id: dbTable.id,
           name: dbTable.name,
           status: dbTable.status,
-          branchId: dbTable.branchId || branchId,
+          branchId: dbTable.branchId,
           customerCount: dbTable.capacity,
           updatedAt: dbTable.updatedAt.toISOString(),
         };
@@ -126,39 +162,63 @@ export class TableController {
   static async createTable(req: Request, res: Response) {
     try {
       const { name, capacity } = req.body;
-      const tenantId = req.user?.tenantId;
-      const branchId = req.user?.branchId || (req.body.branchId as string) || 'default-branch';
+      const { tenantId, branchId } = getTenantContext(req);
 
       if (!name) {
         return ApiResponse.error(res, 'MISSING_NAME', 'Tên bàn là bắt buộc', 400);
       }
 
-      try {
-        if (tenantId && branchId && branchId !== 'default-branch') {
-          const newDbTable = await prisma.table.create({
-            data: {
-              name,
-              code: name,
-              capacity: capacity ? Number(capacity) : 4,
-              tenantId,
-              branchId,
-              status: 'EMPTY',
-            },
-          });
-          return ApiResponse.success(
-            res,
-            {
-              id: newDbTable.id,
-              name: newDbTable.name,
-              status: newDbTable.status,
-              branchId: newDbTable.branchId,
-              customerCount: newDbTable.capacity,
-              updatedAt: newDbTable.updatedAt.toISOString(),
-            },
-            'Tạo bàn thành công',
-            201
-          );
+      const role = req.tenantContext!.role;
+      const requestedBranch = req.body.branchId as string | undefined;
+      let targetBranchId = branchId;
+      if (requestedBranch && requestedBranch !== branchId) {
+        // Chỉ ADMIN được tạo bàn cho branch khác; đồng thời validate branch thuộc tenant
+        if (role !== 'ADMIN' && role !== 'PLATFORM_ADMIN') {
+          return ApiResponse.error(res, 'FORBIDDEN', 'Không có quyền tạo bàn cho chi nhánh khác', 403);
         }
+        const branch = await prisma.branch.findFirst({
+          where: { id: requestedBranch, tenantId, isActive: true },
+        });
+        if (!branch) {
+          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không tồn tại', 404);
+        }
+        targetBranchId = branch.id;
+      }
+      if (!targetBranchId || targetBranchId === 'ALL' || targetBranchId === 'default-branch') {
+        const firstBranch = await prisma.branch.findFirst({
+          where: { tenantId, isActive: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (!firstBranch) {
+          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Quán chưa có chi nhánh hoạt động', 404);
+        }
+        targetBranchId = firstBranch.id;
+      }
+
+      try {
+        const newDbTable = await prisma.table.create({
+          data: {
+            name,
+            code: name,
+            capacity: capacity ? Number(capacity) : 4,
+            tenantId,
+            branchId: targetBranchId,
+            status: 'EMPTY',
+          },
+        });
+        return ApiResponse.success(
+          res,
+          {
+            id: newDbTable.id,
+            name: newDbTable.name,
+            status: newDbTable.status,
+            branchId: newDbTable.branchId,
+            customerCount: newDbTable.capacity,
+            updatedAt: newDbTable.updatedAt.toISOString(),
+          },
+          'Tạo bàn thành công',
+          201
+        );
       } catch (err: any) {
         // Fallback memory
       }

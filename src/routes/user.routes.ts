@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import UserController from '../controllers/user.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth.middleware';
+import { enforceTenantIsolation } from '../middlewares/tenantIsolation';
 import validate from '../middlewares/validate';
 
 const createUserSchema = z.object({
@@ -28,7 +29,7 @@ const updateUserSchema = z.object({
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, enforceTenantIsolation);
 
 // Quản lý nhân viên yêu cầu quyền ADMIN hoặc MANAGER
 router.get('/roles', requireRole(['ADMIN', 'MANAGER']), UserController.getRoles);

@@ -37,7 +37,8 @@ export const createSessionOrderSchema = z.object({
 export class SessionOrderController {
   static async createOrder(req: Request, res: Response) {
     try {
-      const tableId = req.params.tableId || req.body.tableId;
+      // Ưu tiên tableId đã resolve+validate từ validateTableSession (hỗ trợ JWT QR)
+      const tableId = (req as any).tableContext?.tableId || req.params.tableId || req.body.tableId;
       if (!tableId) {
         return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu mã định danh bàn', 400);
       }
