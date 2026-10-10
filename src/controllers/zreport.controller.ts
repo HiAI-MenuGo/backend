@@ -13,11 +13,15 @@ export class ZReportController {
    */
   static async getPreview(req: Request, res: Response) {
     try {
-      const tenantId = req.user?.tenantId;
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
+      // Scope theo tenantContext đã validate (query branch lạ đã bị enforce chặn từ middleware)
+      const ctx = req.tenantContext;
+      if (!ctx) {
+        return ApiResponse.error(res, 'TENANT_CONTEXT_REQUIRED', 'Không xác định được chi nhánh/quán', 400);
+      }
+      const { tenantId, branchId } = ctx;
       const startTimeStr = req.query.startTime as string;
 
-      if (!tenantId || !branchId) {
+      if (!tenantId || !branchId || branchId === 'ALL') {
         return ApiResponse.error(res, 'MISSING_PARAMS', 'Thiếu thông tin chi nhánh', 400);
       }
 
@@ -42,12 +46,30 @@ export class ZReportController {
    */
   static async createReport(req: Request, res: Response) {
     try {
-      const tenantId = req.user?.tenantId;
+      const ctx = req.tenantContext;
+      if (!ctx) {
+        return ApiResponse.error(res, 'TENANT_CONTEXT_REQUIRED', 'Không xác định được chi nhánh/quán', 400);
+      }
+      const tenantId = ctx.tenantId;
       const userId = req.user?.userId;
-      const branchId = req.body.branchId || req.user?.branchId;
+      // body.branchId khác context chỉ ADMIN được phép; đồng thời validate branch thuộc tenant
+      const requestedBranch = req.body.branchId as string | undefined;
+      let branchId = ctx.branchId;
+      if (requestedBranch && requestedBranch !== branchId) {
+        if (ctx.role !== 'ADMIN' && ctx.role !== 'PLATFORM_ADMIN') {
+          return ApiResponse.error(res, 'FORBIDDEN', 'Không có quyền chốt ca cho chi nhánh khác', 403);
+        }
+        const branch = await prisma.branch.findFirst({
+          where: { id: requestedBranch, tenantId, isActive: true },
+        });
+        if (!branch) {
+          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không tồn tại', 404);
+        }
+        branchId = branch.id;
+      }
       const { shiftName, startTime, openingCash = 0, actualCash = 0, note } = req.body;
 
-      if (!tenantId || !userId || !branchId || !shiftName || !startTime) {
+      if (!tenantId || !userId || !branchId || branchId === 'ALL' || !shiftName || !startTime) {
         return ApiResponse.error(
           res,
           'MISSING_FIELDS',
@@ -86,9 +108,12 @@ export class ZReportController {
    */
   static async exportReport(req: Request, res: Response) {
     try {
-      const tenantId = req.user?.tenantId;
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
-      if (!tenantId || !branchId) {
+      const ctx = req.tenantContext;
+      if (!ctx) {
+        return ApiResponse.error(res, 'TENANT_CONTEXT_REQUIRED', 'Không xác định được chi nhánh/quán', 400);
+      }
+      const { tenantId, branchId } = ctx;
+      if (!tenantId || !branchId || branchId === 'ALL') {
         return ApiResponse.error(res, 'MISSING_PARAMS', 'Thiếu thông tin chi nhánh', 400);
       }
       const format = String(req.query.format || 'excel').toLowerCase();
@@ -101,8 +126,9 @@ export class ZReportController {
           where: { id: tenantId },
           include: { branding: true },
         }),
-        prisma.branch.findUnique({
-          where: { id: branchId },
+        // Scope branch theo tenant (chặn lộ tên/địa chỉ branch tenant khác)
+        prisma.branch.findFirst({
+          where: { id: branchId, tenantId },
         }),
       ]);
 
@@ -248,15 +274,24 @@ export class ZReportController {
    */
   static async getHistory(req: Request, res: Response) {
     try {
-      const tenantId = req.user?.tenantId;
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
+      const ctxHist = req.tenantContext;
+      if (!ctxHist) {
+        return ApiResponse.error(res, 'TENANT_CONTEXT_REQUIRED', 'No tenant context', 400);
+      }
+      const tenantId = ctxHist.tenantId;
+      const branchId = ctxHist.branchId;
+      const histRole = ctxHist.role;
 
       if (!tenantId) {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenant', 401);
       }
 
       const where: any = { tenantId };
-      if (branchId) where.branchId = branchId;
+      if (histRole !== 'ADMIN' && histRole !== 'PLATFORM_ADMIN') {
+        where.branchId = branchId;
+      } else if (branchId && branchId !== 'ALL' && branchId !== 'default-branch') {
+        where.branchId = branchId;
+      }
 
       const reports = await prisma.zReport.findMany({
         where,

@@ -33,8 +33,14 @@ const limiter = rateLimit({
   },
 });
 
+import path from 'path';
+
 // Security & Parsing Middlewares
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 app.use(limiter);
 app.use(
   cors({
@@ -45,6 +51,9 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Static uploads (fallback when Cloudinary is not used)
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
 // API Routes
 app.use('/api', rootRouter);

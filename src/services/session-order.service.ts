@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import logger from '../utils/logger';
-import { emitToBranch, SOCKET_EVENTS } from '../socket';
+import { emitToBranch, emitToTable, SOCKET_EVENTS } from '../socket';
 import { VoucherQuoteService } from './voucher-quote.service';
 
 export interface CreateSessionOrderItemInput {
@@ -32,7 +32,7 @@ export class SessionOrderService {
    * 3. Tìm hoặc tạo OrderSession OPEN (code: SES-YYYYMMDD-###, tenantId+branchId).
    * 4. Validate menu items cùng tenant; tính lại giá từ DB; map modifiers.
    * 5. Voucher/discount engine: chỉ áp dụng khi session.discountAmount === 0, không tin client.
-   * 6. Tạo Order (DINE_IN, PENDING, code: ORD-YYYYMMDD-###) + OrderItem[].
+   * 6. Tạo Order (DINE_IN, PENDING, code: H-[xxx]) + OrderItem[].
    * 7. Cộng dồn subTotal/finalAmount của session (discount áp dụng 1 lần duy nhất); bàn -> OCCUPIED.
    * 8. Retry tối đa 3 lần khi xung đột race-condition (P2002) trên sessionCode/orderCode -> 500 ORDER_CODE_CONFLICT.
    * 9. Phát socket events: order:new, table:status-changed, session:updated.
@@ -244,36 +244,37 @@ export class SessionOrderService {
 
           const orderTotalAmount = Math.max(0, orderSubTotal - orderDiscount);
 
-          // 6. Sinh mã đơn hàng ORD-YYYYMMDD-### (tenantId + branchId)
-          const countOrdersToday = await tx.order.count({
+          // 6. Sinh mã đơn hàng H-[xxx] theo định dạng yêu cầu (duy nhất trong branchId)
+          const latestOrders = await tx.order.findMany({
             where: {
-              tenantId,
               branchId,
-              createdAt: { gte: startOfDay },
+              orderCode: { startsWith: 'H-' },
             },
-          });
-
-          // Tìm orderCode lớn nhất trong ngày để tính next sequence
-          const latestOrder = await tx.order.findFirst({
-            where: {
-              tenantId,
-              branchId,
-              orderCode: { startsWith: `ORD-${dateStr}-` },
-            },
-            orderBy: { orderCode: 'desc' },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
             select: { orderCode: true },
           });
 
-          let nextOrderSeq = countOrdersToday + 1;
-          if (latestOrder) {
-            const match = latestOrder.orderCode.match(/ORD-\d+-(\d+)/);
+          let maxSeq = 0;
+          for (const o of latestOrders) {
+            const match = o.orderCode.match(/^H-(\d+)/);
             if (match) {
-              nextOrderSeq = Math.max(nextOrderSeq, parseInt(match[1], 10) + 1);
+              const num = parseInt(match[1], 10);
+              if (!isNaN(num) && num > maxSeq) {
+                maxSeq = num;
+              }
             }
           }
 
+          const countOrdersBranch = await tx.order.count({
+            where: {
+              branchId,
+            },
+          });
+
+          let nextOrderSeq = Math.max(maxSeq + 1, countOrdersBranch + 1);
           const orderSeq = String(nextOrderSeq + (attempt > 0 ? attempt : 0)).padStart(3, '0');
-          const orderCode = `ORD-${dateStr}-${orderSeq}`;
+          const orderCode = `H-${orderSeq}`;
 
           const createdOrder = await tx.order.create({
             data: {
@@ -352,6 +353,7 @@ export class SessionOrderService {
           emitToBranch(result.branchId, SOCKET_EVENTS.ORDER_NEW, {
             id: result.order.id,
             orderId: result.order.id,
+            code: result.order.orderCode,
             orderCode: result.order.orderCode,
             orderNumber: result.order.orderCode,
             tableId: result.table.id,
@@ -385,6 +387,15 @@ export class SessionOrderService {
           }
 
           emitToBranch(result.branchId, SOCKET_EVENTS.SESSION_UPDATED, {
+            sessionId: result.session.id,
+            tableId: result.table.id,
+            subTotal: result.session.subTotal,
+            discountAmount: result.session.discountAmount,
+            finalAmount: result.session.finalAmount,
+          });
+
+          // QR guest ở table room cũng nhận session của đúng bàn mình
+          emitToTable(result.table.id, SOCKET_EVENTS.SESSION_UPDATED, {
             sessionId: result.session.id,
             tableId: result.table.id,
             subTotal: result.session.subTotal,

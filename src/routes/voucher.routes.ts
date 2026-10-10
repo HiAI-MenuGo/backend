@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import VoucherController from '../controllers/voucher.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth.middleware';
+import { enforceTenantIsolation } from '../middlewares/tenantIsolation';
 import validate from '../middlewares/validate';
+import { qrMenuRateLimit } from '../middlewares/qrRateLimit';
 
 const createVoucherSchema = z.object({
   body: z.object({
@@ -21,11 +23,11 @@ const createVoucherSchema = z.object({
 const router = Router();
 
 // Endpoint check/apply voucher là public/semi-public (dành cho cả QR Menu và POS)
-router.post('/apply', VoucherController.applyVoucher);
-router.post('/validate', VoucherController.validateVoucher);
+router.post('/apply', qrMenuRateLimit, VoucherController.applyVoucher);
+router.post('/validate', qrMenuRateLimit, VoucherController.validateVoucher);
 
-// Quản trị voucher yêu cầu đăng nhập
-router.use(authMiddleware);
+// Quản trị voucher yêu cầu đăng nhập + tenant isolation
+router.use(authMiddleware, enforceTenantIsolation);
 
 router.get('/', VoucherController.getVouchers);
 router.post('/', requireRole(['ADMIN']), validate(createVoucherSchema), VoucherController.createVoucher);

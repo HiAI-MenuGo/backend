@@ -54,19 +54,21 @@ export function initSocketServer(httpServer: HttpServer): Server {
             role: decoded.role,
             tableId,
           };
+          socket.data.authenticated = true;
           return next();
         } catch (jwtErr) {
           console.warn(`[Socket.IO] JWT verification failed, checking dev mode fallback...`);
         }
       }
 
-      // Fallback dev mode / QR Menu khách vãng lai
+      // Fallback dev mode / QR Menu khách vãng lai (GUEST chưa xác thực)
       socket.user = {
         tenantId: tenantId || 'default-tenant',
         branchId: branchId || 'default-branch',
         tableId: tableId,
         role: 'GUEST',
       };
+      socket.data.authenticated = false;
       return next();
     } catch (err: any) {
       console.error('[Socket.IO] Auth Middleware Error:', err.message);
@@ -78,15 +80,24 @@ export function initSocketServer(httpServer: HttpServer): Server {
     const user = socket.user;
     console.log(`⚡ [Socket.IO] Client connected: ${socket.id} (tenant: ${user?.tenantId}, branch: ${user?.branchId})`);
 
-    // Tự động gia nhập Room theo Tenant và Chi nhánh
-    if (user?.tenantId) {
-      socket.join(`tenant:${user.tenantId}`);
-    }
-    if (user?.branchId) {
-      socket.join(`branch:${user.branchId}`);
-    }
-    if (user?.tableId) {
-      socket.join(`table:${user.tableId}`);
+    const isGuest = !socket.data?.authenticated && user?.role === 'GUEST';
+    // GUEST (QR khách, không JWT): chỉ join room bàn của mình.
+    // Chặn join tenant:/branch: room để không nghe lén order/payment của cả chi nhánh.
+    if (isGuest) {
+      if (user?.tableId) {
+        socket.join(`table:${user.tableId}`);
+      }
+    } else {
+      // Tự động gia nhập Room theo Tenant và Chi nhánh
+      if (user?.tenantId) {
+        socket.join(`tenant:${user.tenantId}`);
+      }
+      if (user?.branchId) {
+        socket.join(`branch:${user.branchId}`);
+      }
+      if (user?.tableId) {
+        socket.join(`table:${user.tableId}`);
+      }
     }
 
     // Cho phép client gửi ping để kiểm tra kết nối

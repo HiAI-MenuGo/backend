@@ -19,6 +19,67 @@ export interface TopSellingItem {
   category: string;
 }
 
+export interface RevenueReportInput {
+  branchId?: string;
+  startDate?: string;
+  endDate?: string;
+  tenantId?: string;
+}
+
+export interface RevenueDailyItem {
+  date: string;
+  orders: number;
+  revenue: number;
+  cash: number;
+  vietqr: number;
+  discount: number;
+}
+
+export interface RevenueReportData {
+  branch: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  tenantName: string;
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: {
+    totalRevenue: number;
+    previousRevenue: number;
+    growthPercent: number;
+    orderCount: number;
+    avgOrderValue: number;
+    cashRevenue: number;
+    qrRevenue: number;
+    totalDiscount: number;
+  };
+  dailyTrend: RevenueDailyItem[];
+  paymentBreakdown: Array<{
+    method: string;
+    label: string;
+    amount: number;
+    percentage: number;
+  }>;
+  topItems: TopSellingItem[];
+  categoryBreakdown: Array<{
+    category: string;
+    revenue: number;
+    count: number;
+  }>;
+  recentOrders: Array<{
+    id: string;
+    orderCode: string;
+    tableName: string;
+    createdAt: string;
+    totalAmount: number;
+    paymentMethod: string;
+    status: string;
+  }>;
+}
+
 export interface AnalyticsOverview {
   branch: {
     id: string;
@@ -55,6 +116,30 @@ export interface AnalyticsOverview {
  * Chặn IDOR: đối chiếu tenantId của token người dùng.
  */
 async function resolveBranch(branchId?: string, userTenantId?: string) {
+  if (branchId === 'ALL') {
+    let tenant = null;
+    if (userTenantId) {
+      tenant = await prisma.tenant.findUnique({
+        where: { id: userTenantId },
+      });
+    }
+    if (!tenant) {
+      tenant = await prisma.tenant.findFirst();
+    }
+    const tenantId = tenant?.id || userTenantId || 'tenant-default';
+    return {
+      id: 'ALL',
+      tenantId: tenantId,
+      name: 'Tổng chi nhánh (Toàn công ty)',
+      code: 'ALL',
+      address: 'Toàn hệ thống',
+      phone: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any;
+  }
+
   let branch = null;
 
   if (branchId && branchId !== 'default-branch') {
@@ -121,12 +206,14 @@ export class AnalyticsService {
     const startOfYesterday = new Date(y, m - 1, d - 1, 0, 0, 0, 0);
     const endOfYesterday = new Date(y, m - 1, d - 1, 23, 59, 59, 999);
 
+    const branchFilter = branch.id !== 'ALL' ? { branchId: branch.id } : {};
+
     // 1. Doanh thu từ OrderSession CLOSED hôm nay và hôm qua (lọc theo closedAt, fallback openedAt)
     const [closedSessionsToday, closedSessionsYesterday] = await Promise.all([
       prisma.orderSession.findMany({
         where: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           status: 'CLOSED',
           OR: [
             { closedAt: { gte: startOfDay, lte: endOfDay } },
@@ -140,7 +227,7 @@ export class AnalyticsService {
       prisma.orderSession.findMany({
         where: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           status: 'CLOSED',
           OR: [
             { closedAt: { gte: startOfYesterday, lte: endOfYesterday } },
@@ -167,7 +254,7 @@ export class AnalyticsService {
     const orderCount = await prisma.order.count({
       where: {
         tenantId: branch.tenantId,
-        branchId: branch.id,
+        ...branchFilter,
         createdAt: { gte: startOfDay, lte: endOfDay },
         status: { not: 'CANCELLED' },
       },
@@ -181,7 +268,7 @@ export class AnalyticsService {
         status: 'PAID',
         session: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
         },
         OR: [
           { paidAt: { gte: startOfDay, lte: endOfDay } },
@@ -205,7 +292,7 @@ export class AnalyticsService {
       prisma.table.count({
         where: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           isActive: true,
           status: 'OCCUPIED',
         },
@@ -213,7 +300,7 @@ export class AnalyticsService {
       prisma.table.count({
         where: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           isActive: true,
         },
       }),
@@ -224,7 +311,7 @@ export class AnalyticsService {
       where: {
         order: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           status: { notIn: ['DONE', 'CANCELLED'] },
         },
         status: { in: ['PENDING', 'PREPARING'] },
@@ -257,7 +344,7 @@ export class AnalyticsService {
         status: { not: 'CANCELLED' },
         order: {
           tenantId: branch.tenantId,
-          branchId: branch.id,
+          ...branchFilter,
           createdAt: { gte: startOfDay, lte: endOfDay },
           status: { not: 'CANCELLED' },
         },
@@ -321,5 +408,472 @@ export class AnalyticsService {
       hourlyTrend,
       topItems,
     };
+  }
+
+  /**
+   * Tính toán báo cáo doanh thu theo khoảng ngày, bao gồm KPI, xu hướng hàng ngày,
+   * phân bổ phương thức thanh toán, top món và danh sách đơn hàng.
+   */
+  static async getRevenueReport(input: RevenueReportInput): Promise<RevenueReportData> {
+    const branch = await resolveBranch(input.branchId, input.tenantId);
+
+    const now = new Date();
+    let startD: Date;
+    let endD: Date;
+
+    if (input.startDate) {
+      const [sy, sm, sd] = input.startDate.split('-').map(Number);
+      startD = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+    } else {
+      startD = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
+    }
+
+    if (input.endDate) {
+      const [ey, em, ed] = input.endDate.split('-').map(Number);
+      endD = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+    } else {
+      endD = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    }
+
+    const startDateStr = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}-${String(startD.getDate()).padStart(2, '0')}`;
+    const endDateStr = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, '0')}-${String(endD.getDate()).padStart(2, '0')}`;
+
+    const periodMs = endD.getTime() - startD.getTime();
+    const prevStartD = new Date(startD.getTime() - periodMs);
+    const prevEndD = new Date(startD.getTime() - 1);
+
+    const branchFilter = branch.id !== 'ALL' ? { branchId: branch.id } : {};
+
+    const [closedSessions, prevSessions, tenant] = await Promise.all([
+      prisma.orderSession.findMany({
+        where: {
+          tenantId: branch.tenantId,
+          ...branchFilter,
+          status: 'CLOSED',
+          OR: [
+            { closedAt: { gte: startD, lte: endD } },
+            { closedAt: null, openedAt: { gte: startD, lte: endD } },
+          ],
+        },
+        include: {
+          orders: {
+            where: { status: { not: 'CANCELLED' } },
+            include: {
+              items: {
+                where: { status: { not: 'CANCELLED' } },
+                include: {
+                  menuItem: {
+                    include: { category: true },
+                  },
+                },
+              },
+            },
+          },
+          transactions: {
+            where: { status: 'PAID' },
+          },
+          table: {
+            select: { name: true },
+          },
+        },
+        orderBy: { closedAt: 'desc' },
+      }),
+      prisma.orderSession.findMany({
+        where: {
+          tenantId: branch.tenantId,
+          ...branchFilter,
+          status: 'CLOSED',
+          OR: [
+            { closedAt: { gte: prevStartD, lte: prevEndD } },
+            { closedAt: null, openedAt: { gte: prevStartD, lte: prevEndD } },
+          ],
+        },
+        select: { finalAmount: true },
+      }),
+      prisma.tenant.findUnique({
+        where: { id: branch.tenantId },
+        select: { name: true },
+      }),
+    ]);
+
+    let totalRevenue = 0;
+    let cashRevenue = 0;
+    let qrRevenue = 0;
+    let totalDiscount = 0;
+    let orderCount = 0;
+
+    const dailyMap = new Map<string, RevenueDailyItem>();
+    const cursor = new Date(startD);
+    while (cursor <= endD) {
+      const dStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+      dailyMap.set(dStr, {
+        date: dStr,
+        orders: 0,
+        revenue: 0,
+        cash: 0,
+        vietqr: 0,
+        discount: 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const itemMap = new Map<string, TopSellingItem>();
+    const catMap = new Map<string, { revenue: number; count: number }>();
+    const recentOrders: Array<{
+      id: string;
+      orderCode: string;
+      tableName: string;
+      createdAt: string;
+      totalAmount: number;
+      paymentMethod: string;
+      status: string;
+    }> = [];
+
+    for (const session of closedSessions) {
+      const sTimestamp = session.closedAt || session.openedAt;
+      const sDateObj = new Date(sTimestamp);
+      const sDateStr = `${sDateObj.getFullYear()}-${String(sDateObj.getMonth() + 1).padStart(2, '0')}-${String(sDateObj.getDate()).padStart(2, '0')}`;
+      const dayItem = dailyMap.get(sDateStr);
+
+      totalRevenue += session.finalAmount;
+      totalDiscount += session.discountAmount;
+      orderCount += session.orders.length;
+
+      if (dayItem) {
+        dayItem.revenue += session.finalAmount;
+        dayItem.discount += session.discountAmount;
+        dayItem.orders += session.orders.length;
+      }
+
+      let primaryMethod = 'CASH';
+      if (session.transactions && session.transactions.length > 0) {
+        for (const tx of session.transactions) {
+          if (tx.method === 'VIETQR') {
+            qrRevenue += tx.amount;
+            if (dayItem) dayItem.vietqr += tx.amount;
+            primaryMethod = 'VIETQR';
+          } else {
+            cashRevenue += tx.amount;
+            if (dayItem) dayItem.cash += tx.amount;
+            primaryMethod = 'CASH';
+          }
+        }
+      } else {
+        cashRevenue += session.finalAmount;
+        if (dayItem) dayItem.cash += session.finalAmount;
+        primaryMethod = 'CASH';
+      }
+
+      for (const ord of session.orders) {
+        recentOrders.push({
+          id: ord.id,
+          orderCode: ord.orderCode,
+          tableName: session.table?.name || 'Mang về',
+          createdAt: ord.createdAt.toISOString(),
+          totalAmount: ord.totalAmount,
+          paymentMethod: primaryMethod,
+          status: ord.status,
+        });
+
+        for (const it of ord.items) {
+          const catName = it.menuItem?.category?.name || 'Khác';
+          const exItem = itemMap.get(it.menuItemId);
+          if (!exItem) {
+            itemMap.set(it.menuItemId, {
+              name: it.menuItem?.name || it.itemName,
+              category: catName,
+              soldCount: it.quantity,
+              revenue: it.totalPrice,
+            });
+          } else {
+            exItem.soldCount += it.quantity;
+            exItem.revenue += it.totalPrice;
+          }
+
+          const exCat = catMap.get(catName);
+          if (!exCat) {
+            catMap.set(catName, { revenue: it.totalPrice, count: it.quantity });
+          } else {
+            exCat.revenue += it.totalPrice;
+            exCat.count += it.quantity;
+          }
+        }
+      }
+    }
+
+    const prevRevenue = prevSessions.reduce((sum, s) => sum + s.finalAmount, 0);
+    let growthPercent = 0;
+    if (prevRevenue > 0) {
+      growthPercent = Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 1000) / 10;
+    } else if (totalRevenue > 0) {
+      growthPercent = 100;
+    }
+
+    const avgOrderValue = orderCount > 0 ? Math.round(totalRevenue / orderCount) : 0;
+    const totalPayments = cashRevenue + qrRevenue || totalRevenue || 1;
+
+    const paymentBreakdown = [
+      {
+        method: 'VIETQR',
+        label: 'VietQR / Chuyển khoản',
+        amount: qrRevenue,
+        percentage: Math.round((qrRevenue / totalPayments) * 1000) / 10,
+      },
+      {
+        method: 'CASH',
+        label: 'Tiền mặt',
+        amount: cashRevenue,
+        percentage: Math.round((cashRevenue / totalPayments) * 1000) / 10,
+      },
+    ];
+
+    const topItems: TopSellingItem[] = Array.from(itemMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    const categoryBreakdown = Array.from(catMap.entries())
+      .map(([category, val]) => ({
+        category,
+        revenue: val.revenue,
+        count: val.count,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      branch: {
+        id: branch.id,
+        name: branch.name,
+        code: branch.code,
+      },
+      tenantName: tenant?.name || 'HiAI-MenuGo Restaurant',
+      dateRange: {
+        startDate: startDateStr,
+        endDate: endDateStr,
+      },
+      summary: {
+        totalRevenue,
+        previousRevenue: prevRevenue,
+        growthPercent,
+        orderCount,
+        avgOrderValue,
+        cashRevenue,
+        qrRevenue,
+        totalDiscount,
+      },
+      dailyTrend: Array.from(dailyMap.values()),
+      paymentBreakdown,
+      topItems,
+      categoryBreakdown,
+      recentOrders: recentOrders.slice(0, 100),
+    };
+  }
+
+  /**
+   * Xuất báo cáo doanh thu ra file Excel (.xlsx) với định dạng chuyên nghiệp,
+   * bao gồm các bảng thống kê chỉ số, bảng doanh thu theo ngày, danh sách đơn hàng và top món.
+   */
+  static async generateRevenueExcel(report: RevenueReportData): Promise<Buffer> {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'HiAI MenuGo';
+    wb.created = new Date();
+
+    const emeraldFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF00A389' },
+    };
+    const headerFont: any = {
+      name: 'Arial',
+      size: 11,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    const totalFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE6F7F4' },
+    };
+    const totalFont: any = {
+      name: 'Arial',
+      size: 11,
+      bold: true,
+      color: { argb: 'FF007A65' },
+    };
+
+    // Sheet 1: Doanh Thu Theo Ngày
+    const ws1 = wb.addWorksheet('Doanh Thu Theo Ngày');
+    ws1.views = [{ showGridLines: true }];
+
+    ws1.mergeCells('A1:H1');
+    const titleCell = ws1.getCell('A1');
+    titleCell.value = 'BÁO CÁO DOANH THU KINH DOANH';
+    titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FF00A389' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws1.getRow(1).height = 30;
+
+    ws1.mergeCells('A2:H2');
+    const infoCell1 = ws1.getCell('A2');
+    infoCell1.value = `Nhà hàng: ${report.tenantName} | Chi nhánh: ${report.branch.name} (${report.branch.code})`;
+    infoCell1.font = { name: 'Arial', size: 11, italic: true };
+    infoCell1.alignment = { horizontal: 'center' };
+
+    ws1.mergeCells('A3:H3');
+    const infoCell2 = ws1.getCell('A3');
+    infoCell2.value = `Khoảng ngày: Từ ${report.dateRange.startDate} đến ${report.dateRange.endDate}`;
+    infoCell2.font = { name: 'Arial', size: 11, bold: true };
+    infoCell2.alignment = { horizontal: 'center' };
+
+    ws1.mergeCells('A4:H4');
+    const infoCell3 = ws1.getCell('A4');
+    infoCell3.value = `Thời điểm xuất báo cáo: ${new Date().toLocaleString('vi-VN')}`;
+    infoCell3.font = { name: 'Arial', size: 10, color: { argb: 'FF64748B' } };
+    infoCell3.alignment = { horizontal: 'center' };
+
+    ws1.addRow([]);
+    const kpiHeader = ws1.addRow(['CHỈ TIÊU TỔNG HỢP', 'GIÁ TRỊ']);
+    kpiHeader.font = { bold: true };
+    ws1.addRow(['Tổng doanh thu thực nhận', report.summary.totalRevenue]);
+    ws1.addRow(['Doanh thu thanh toán VietQR', report.summary.qrRevenue]);
+    ws1.addRow(['Doanh thu tiền mặt', report.summary.cashRevenue]);
+    ws1.addRow(['Tổng số đơn hoàn thành', report.summary.orderCount]);
+    ws1.addRow(['Giá trị đơn trung bình (AOV)', report.summary.avgOrderValue]);
+    ws1.addRow(['Tổng giảm giá / Voucher', report.summary.totalDiscount]);
+
+    for (let r = 7; r <= 12; r++) {
+      ws1.getCell(`B${r}`).numFmt = '#,##0';
+    }
+
+    ws1.addRow([]);
+    ws1.addRow(['CHI TIẾT DOANH THU TỪNG NGÀY']);
+    ws1.getCell('A14').font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FF0F172A' } };
+
+    const headersDaily = ['STT', 'Ngày', 'Số đơn', 'Tiền mặt (đ)', 'VietQR (đ)', 'Giảm giá (đ)', 'Tổng doanh thu (đ)'];
+    const headerRowDaily = ws1.addRow(headersDaily);
+    headerRowDaily.height = 25;
+    headerRowDaily.eachCell((cell) => {
+      cell.fill = emeraldFill;
+      cell.font = headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let stt = 1;
+    let sumOrders = 0;
+    let sumCash = 0;
+    let sumQr = 0;
+    let sumDiscount = 0;
+    let sumRevenue = 0;
+
+    for (const d of report.dailyTrend) {
+      sumOrders += d.orders;
+      sumCash += d.cash;
+      sumQr += d.vietqr;
+      sumDiscount += d.discount;
+      sumRevenue += d.revenue;
+
+      const row = ws1.addRow([
+        stt++,
+        d.date,
+        d.orders,
+        d.cash,
+        d.vietqr,
+        d.discount,
+        d.revenue,
+      ]);
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(2).alignment = { horizontal: 'center' };
+      row.getCell(3).numFmt = '#,##0';
+      row.getCell(4).numFmt = '#,##0';
+      row.getCell(5).numFmt = '#,##0';
+      row.getCell(6).numFmt = '#,##0';
+      row.getCell(7).numFmt = '#,##0';
+    }
+
+    const totalRow = ws1.addRow([
+      '',
+      'TỔNG CỘNG',
+      sumOrders,
+      sumCash,
+      sumQr,
+      sumDiscount,
+      sumRevenue,
+    ]);
+    totalRow.height = 24;
+    totalRow.eachCell((cell) => {
+      cell.fill = totalFill;
+      cell.font = totalFont;
+      cell.numFmt = '#,##0';
+    });
+    totalRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Sheet 2: Danh Sách Đơn Hàng
+    const ws2 = wb.addWorksheet('Danh Sách Đơn Hàng');
+    ws2.views = [{ showGridLines: true }];
+    const headersOrders = ['STT', 'Mã đơn', 'Bàn / Khách', 'Thời gian', 'Phương thức', 'Trạng thái', 'Tổng tiền (đ)'];
+    const headerRowOrders = ws2.addRow(headersOrders);
+    headerRowOrders.height = 24;
+    headerRowOrders.eachCell((cell) => {
+      cell.fill = emeraldFill;
+      cell.font = headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let oIdx = 1;
+    for (const ord of report.recentOrders) {
+      const row = ws2.addRow([
+        oIdx++,
+        ord.orderCode,
+        ord.tableName,
+        new Date(ord.createdAt).toLocaleString('vi-VN'),
+        ord.paymentMethod === 'VIETQR' ? 'VietQR' : 'Tiền mặt',
+        ord.status === 'DONE' ? 'Hoàn thành' : ord.status,
+        ord.totalAmount,
+      ]);
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(2).alignment = { horizontal: 'center' };
+      row.getCell(5).alignment = { horizontal: 'center' };
+      row.getCell(6).alignment = { horizontal: 'center' };
+      row.getCell(7).numFmt = '#,##0';
+    }
+
+    // Sheet 3: Top Món Bán Chạy
+    const ws3 = wb.addWorksheet('Top Món Bán Chạy');
+    ws3.views = [{ showGridLines: true }];
+    const headersTop = ['Xếp hạng', 'Tên món ăn / đồ uống', 'Danh mục', 'Số lượng bán', 'Doanh thu (đ)'];
+    const headerRowTop = ws3.addRow(headersTop);
+    headerRowTop.height = 24;
+    headerRowTop.eachCell((cell) => {
+      cell.fill = emeraldFill;
+      cell.font = headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let tIdx = 1;
+    for (const it of report.topItems) {
+      const row = ws3.addRow([
+        `#${tIdx++}`,
+        it.name,
+        it.category,
+        it.soldCount,
+        it.revenue,
+      ]);
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(4).numFmt = '#,##0';
+      row.getCell(5).numFmt = '#,##0';
+    }
+
+    [ws1, ws2, ws3].forEach((ws) => {
+      ws.columns.forEach((column: any) => {
+        let maxLen = 14;
+        column.eachCell?.({ includeEmpty: false }, (cell: any) => {
+          const val = cell.value ? String(cell.value) : '';
+          if (val.length > maxLen) maxLen = Math.min(val.length + 3, 40);
+        });
+        column.width = maxLen;
+      });
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    return Buffer.from(buf);
   }
 }

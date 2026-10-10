@@ -30,14 +30,96 @@ export function renameCategoryInMemory(oldName: string, newName: string) {
   });
 }
 
+import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
+import { resolveTableScope } from '../utils/tableScope';
+import { getTenantContext } from '../middlewares/tenantIsolation';
 
 export class MenuController {
+  /**
+   * GET /api/menu/items — dual-mode:
+   * - Staff (auth): scope theo tenantContext hoặc token của user.
+   * - QR khách (public): scope theo tableId (lookup bàn) hoặc branchId / tenantId.
+   * Không bao giờ lỗi chặn khi người dùng đã đăng nhập hoặc có định danh khả dụng.
+   */
   static async getItems(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || 'default-branch';
+      let tenantId: string | undefined = req.tenantContext?.tenantId;
+      let branchId: string | undefined = req.tenantContext?.branchId;
+
+      // 1. Thử lấy từ req.user (nếu đã qua auth / optionalAuth)
+      if (!tenantId && req.user?.tenantId) {
+        tenantId = req.user.tenantId;
+        branchId = req.user.branchId || branchId;
+      }
+
+      // 2. Thử decode Bearer token từ header nếu có
+      if (!tenantId && req.headers.authorization) {
+        try {
+          const header = req.headers.authorization;
+          const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+          if (token) {
+            const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_hiai_menugo_2026';
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            if (decoded?.tenantId) {
+              tenantId = decoded.tenantId;
+              branchId = decoded.branchId || branchId;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 3. Thử derive từ tableId (khách quét QR bàn)
+      if (!tenantId) {
+        const tableId = (req.query.tableId as string) || (req.query.table as string);
+        if (tableId) {
+          const scope = await resolveTableScope(tableId);
+          if (scope) {
+            tenantId = scope.tenantId;
+            branchId = scope.branchId;
+          }
+        }
+      }
+
+      // 4. Thử derive từ query / headers (tenantId hoặc branchId)
+      if (!tenantId) {
+        const qTenant = (req.query.tenantId as string) || undefined;
+        const qBranch =
+          (req.query.branchId as string) || (req.headers['x-branch-id'] as string) || undefined;
+        if (qTenant) {
+          tenantId = qTenant;
+          branchId = qBranch;
+        } else if (qBranch && qBranch !== 'default-branch' && qBranch !== 'ALL') {
+          const branch = await prisma.branch.findUnique({
+            where: { id: qBranch },
+          });
+          if (branch) {
+            tenantId = branch.tenantId;
+            branchId = branch.id;
+          }
+        }
+      }
+
+      // 5. Fallback: lấy tenant ACTIVE đầu tiên trong DB
+      if (!tenantId) {
+        const firstTenant = await prisma.tenant.findFirst({
+          where: { status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (firstTenant) {
+          tenantId = firstTenant.id;
+        }
+      }
+
+      // Nếu hoàn toàn không có tenant nào trong DB, trả về mock menuItems
+      if (!tenantId) {
+        return ApiResponse.success(res, menuItems, 'Lấy danh sách thực đơn thành công');
+      }
+
       const dbItems = await prisma.menuItem.findMany({
-        where: { isActive: true },
+        where: { isActive: true, tenantId },
         include: {
           category: { select: { name: true } },
         },
@@ -53,12 +135,12 @@ export class MenuController {
           imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500',
           isSoldOut: item.isSoldOut,
           isPopular: true,
-          branchId,
+          branchId: branchId || 'default-branch',
         }));
         return ApiResponse.success(res, formatted, 'Lấy danh sách thực đơn thành công');
       }
 
-      const items = menuItems.filter((i) => i.branchId === branchId);
+      const items = menuItems.filter((i) => i.branchId === (branchId || 'default-branch'));
       return ApiResponse.success(res, items, 'Lấy danh sách thực đơn thành công');
     } catch (err: any) {
       return ApiResponse.error(res, 'FETCH_MENU_ERROR', err.message, 500);
@@ -69,14 +151,20 @@ export class MenuController {
     try {
       const { id } = req.params;
       const { isSoldOut } = req.body;
-      const branchId = (req.query.branchId as string) || (req.body.branchId as string) || 'default-branch';
+      const { tenantId, branchId } = getTenantContext(req);
 
       try {
+        // Scope theo tenant: chỉ update món thuộc quán mình (chặn IDOR đoán item id)
+        const owned = await prisma.menuItem.findFirst({ where: { id, tenantId }, select: { id: true } });
+        if (!owned) {
+          return ApiResponse.error(res, 'ITEM_NOT_FOUND', 'Không tìm thấy món ăn', 404);
+        }
         await prisma.menuItem.update({
-          where: { id },
+          where: { id: owned.id },
           data: { isSoldOut: Boolean(isSoldOut) },
         });
-      } catch (e) {
+      } catch (e: any) {
+        if (e?.errorCode === 'ITEM_NOT_FOUND') throw e;
         // best effort
       }
 
@@ -85,7 +173,6 @@ export class MenuController {
         item.isSoldOut = Boolean(isSoldOut);
       }
 
-      // Bắn socket thông báo sang KDS và Web QR Menu khách hàng
       emitToBranch(branchId, SOCKET_EVENTS.SOLD_OUT_UPDATED, {
         itemId: id,
         isSoldOut: Boolean(isSoldOut),
@@ -104,42 +191,39 @@ export class MenuController {
       if (!name || price === undefined) {
         return ApiResponse.error(res, 'VALIDATION_ERROR', 'Tên món và giá là bắt buộc', 400);
       }
-      const branchId = (req.body.branchId as string) || 'default-branch';
+      const { tenantId, branchId } = getTenantContext(req);
 
       let createdDbItem: any = null;
       try {
-        const tenant = await prisma.tenant.findFirst();
-        if (tenant) {
-          let category = await prisma.menuCategory.findFirst({
-            where: { tenantId: tenant.id, name: categoryName || 'Món mới' }
-          });
-          if (!category) {
-            const rawSlug = String(categoryName || 'mon-moi').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-            category = await prisma.menuCategory.create({
-              data: {
-                tenantId: tenant.id,
-                name: categoryName || 'Món mới',
-                slug: `${rawSlug}-${Date.now().toString().slice(-4)}`,
-              }
-            });
-          }
-          const count = await prisma.menuItem.count({ where: { tenantId: tenant.id } });
-          createdDbItem = await prisma.menuItem.create({
+        let category = await prisma.menuCategory.findFirst({
+          where: { tenantId, name: categoryName || 'Món mới' }
+        });
+        if (!category) {
+          const rawSlug = String(categoryName || 'mon-moi').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          category = await prisma.menuCategory.create({
             data: {
-              tenantId: tenant.id,
-              categoryId: category.id,
-              code: `ITM-${Date.now().toString().slice(-4)}`,
-              name: name.trim(),
-              description: description?.trim() || null,
-              basePrice: Number(price),
-              imageUrl: imageUrl?.trim() || null,
-              isSoldOut: false,
-              isActive: true,
-              displayOrder: count + 1,
-            },
-            include: { category: true }
+              tenantId,
+              name: categoryName || 'Món mới',
+              slug: `${rawSlug}-${Date.now().toString().slice(-4)}`,
+            }
           });
         }
+        const count = await prisma.menuItem.count({ where: { tenantId } });
+        createdDbItem = await prisma.menuItem.create({
+          data: {
+            tenantId,
+            categoryId: category.id,
+            code: `ITM-${Date.now().toString().slice(-4)}`,
+            name: name.trim(),
+            description: description?.trim() || null,
+            basePrice: Number(price),
+            imageUrl: imageUrl?.trim() || null,
+            isSoldOut: false,
+            isActive: true,
+            displayOrder: count + 1,
+          },
+          include: { category: true }
+        });
       } catch (dbErr) {
         console.warn('Prisma createMenuItem fallback to memory:', dbErr);
       }
@@ -165,23 +249,26 @@ export class MenuController {
   static async deleteItem(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const branchId = (req.query.branchId as string) || 'default-branch';
+      const { tenantId, branchId } = getTenantContext(req);
 
       let deleted: any = null;
       try {
+        // Scope theo tenant: chỉ xóa món thuộc quán mình
+        const owned = await prisma.menuItem.findFirst({ where: { id, tenantId }, select: { id: true } });
+        if (!owned) {
+          return ApiResponse.error(res, 'ITEM_NOT_FOUND', 'Không tìm thấy món ăn', 404);
+        }
         deleted = await prisma.menuItem.delete({
-          where: { id },
+          where: { id: owned.id },
         });
-      } catch (e) {
+      } catch (e: any) {
+        if (e?.errorCode === 'ITEM_NOT_FOUND') throw e;
         // best effort nếu chưa migrate xong
       }
 
       menuItems = menuItems.filter((i) => i.id !== id && i.branchId === branchId);
 
-      // Bắn socket thông báo món đã xóa
-      try {
-        emitToBranch(branchId, SOCKET_EVENTS.MENU_ITEM_DELETED, { itemId: id, branchId });
-      } catch {}
+      emitToBranch(branchId, SOCKET_EVENTS.MENU_ITEM_DELETED, { itemId: id, branchId });
 
       return ApiResponse.success(res, { deletedId: id }, 'Xóa món thành công');
     } catch (err: any) {

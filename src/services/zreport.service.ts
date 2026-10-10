@@ -35,7 +35,7 @@ export class ZReportService {
 
     let cashRevenue = 0;
     let qrRevenue = 0;
-    let cardRevenue = 0;
+    const cardRevenue = 0;
     let totalDiscount = 0;
     let orderCount = 0;
 
@@ -45,11 +45,10 @@ export class ZReportService {
       for (const t of s.transactions) {
         if (t.method === 'CASH') cashRevenue += t.amount;
         else if (t.method === 'VIETQR') qrRevenue += t.amount;
-        else if (t.method === 'CARD') cardRevenue += t.amount;
       }
     }
 
-    const totalRevenue = cashRevenue + qrRevenue + cardRevenue;
+    const totalRevenue = cashRevenue + qrRevenue;
 
     // Đếm số đơn bị hủy trong ca
     const voidedCount = await prisma.order.count({

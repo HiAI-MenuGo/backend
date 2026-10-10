@@ -25,9 +25,12 @@ import webhookRouter from './webhook.routes';
 import { tierRouter, loyaltyCustomerRouter } from './loyalty.routes';
 import analyticsRouter from './analytics.routes';
 
+import uploadRouter from './upload.routes';
+
 const rootRouter = Router();
 
 rootRouter.use('/', healthRoutes);
+rootRouter.use('/upload', uploadRouter);
 rootRouter.use('/auth', authRouter);
 rootRouter.use('/orders', orderRouter);
 rootRouter.use('/tables', tableRouter);

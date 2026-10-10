@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import ZReportController from '../controllers/zreport.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth.middleware';
+import { enforceTenantIsolation } from '../middlewares/tenantIsolation';
 import validate from '../middlewares/validate';
 
 const closeShiftSchema = z.object({
@@ -18,6 +19,7 @@ const closeShiftSchema = z.object({
 const router = Router();
 
 router.use(authMiddleware);
+router.use(enforceTenantIsolation);
 // Chỉ ADMIN, MANAGER, CASHIER được phép xem/chốt ca
 router.use(requireRole(['ADMIN', 'MANAGER', 'CASHIER']));
 

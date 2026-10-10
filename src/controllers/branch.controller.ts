@@ -79,6 +79,77 @@ export class BranchController {
     }
   }
 
+  static async updateBranch(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { id } = req.params;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenant', 401);
+      }
+
+      const branch = await prisma.branch.findFirst({
+        where: { id, tenantId },
+      });
+      if (!branch) {
+        return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy chi nhánh', 404);
+      }
+
+      const { name, code, address, phone, isActive } = req.body || {};
+
+      const updateData: any = {};
+      if (name !== undefined) {
+        if (!name || typeof name !== 'string' || !name.trim()) {
+          return ApiResponse.error(res, 'INVALID_INPUT', 'Tên chi nhánh không được để trống', 400);
+        }
+        updateData.name = name.trim();
+      }
+
+      if (code !== undefined && code !== null) {
+        const cleanCode = String(code).trim().toUpperCase();
+        if (cleanCode && cleanCode !== branch.code) {
+          const duplicate = await prisma.branch.findFirst({
+            where: { tenantId, code: cleanCode, id: { not: id } },
+          });
+          if (duplicate) {
+            return ApiResponse.error(res, 'DUPLICATE_CODE', `Mã chi nhánh "${cleanCode}" đã tồn tại`, 400);
+          }
+          updateData.code = cleanCode;
+        }
+      }
+
+      if (address !== undefined) {
+        updateData.address = address ? String(address).trim() : null;
+      }
+
+      if (phone !== undefined) {
+        updateData.phone = phone ? String(phone).trim() : null;
+      }
+
+      if (isActive !== undefined) {
+        updateData.isActive = Boolean(isActive);
+      }
+
+      const updated = await prisma.branch.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          address: true,
+          phone: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return ApiResponse.success(res, updated, 'Cập nhật thông tin chi nhánh thành công');
+    } catch (error: any) {
+      return ApiResponse.error(res, 'UPDATE_BRANCH_ERROR', error.message || 'Không thể cập nhật chi nhánh', 500);
+    }
+  }
+
   static async exportBranchData(req: Request, res: Response) {
     try {
       const tenantId = req.user?.tenantId;

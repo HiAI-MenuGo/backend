@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { resolveTableScope } from '../utils/tableScope';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 import { VoucherType } from '@prisma/client';
@@ -117,9 +118,19 @@ export class VoucherController {
    */
   static async applyVoucher(req: Request, res: Response) {
     try {
-      // QR/POS có thể chưa đăng nhập: ưu tiên tenant từ token, fallback body nhưng vẫn validate voucher thuộc tenant đó.
-      const tenantId = req.user?.tenantId || req.body.tenantId;
-      const { code, subTotal = 0 } = req.body;
+      // Thứ tự ưu tiên tenant: token auth > tableId (QR lookup bàn) > body.tenantId (legacy).
+      // Table là source of truth cho QR public để chặn dò voucher cross-tenant.
+      let tenantId: string | undefined = req.user?.tenantId;
+      const { code, subTotal = 0, tableId } = req.body;
+
+      if (!tenantId && tableId) {
+        const scope = await resolveTableScope(String(tableId));
+        if (!scope) {
+          return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Bàn không tồn tại', 404);
+        }
+        tenantId = scope.tenantId;
+      }
+      if (!tenantId) tenantId = req.body.tenantId;
 
       if (!tenantId || !code) {
         return ApiResponse.error(res, 'MISSING_FIELDS', 'Vui lòng cung cấp mã quán và mã giảm giá', 400);
