@@ -3,10 +3,12 @@ import ApiResponse from '../utils/response';
 import { emitToBranch, SOCKET_EVENTS } from '../socket';
 import { getTenantContext } from '../middlewares/tenantIsolation';
 
+import { resolveTableScope } from '../utils/tableScope';
+
 export interface TableItem {
   id: string;
   name: string;
-  status: 'EMPTY' | 'OCCUPIED' | 'RESERVED';
+  status: 'EMPTY' | 'OCCUPIED';
   branchId: string;
   currentSessionId?: string;
   customerCount?: number;
@@ -18,7 +20,7 @@ let tables: TableItem[] = [
   { id: 'tbl-01', name: 'Bàn 01', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
   { id: 'tbl-02', name: 'Bàn 02', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-02', customerCount: 3, totalAmount: 125000, updatedAt: new Date().toISOString() },
   { id: 'tbl-03', name: 'Bàn 03', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
-  { id: 'tbl-04', name: 'Bàn 04', status: 'RESERVED', branchId: 'default-branch', customerCount: 4, updatedAt: new Date().toISOString() },
+  { id: 'tbl-04', name: 'Bàn 04', status: 'EMPTY', branchId: 'default-branch', customerCount: 4, updatedAt: new Date().toISOString() },
   { id: 'tbl-05', name: 'Bàn 05', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-05', customerCount: 2, totalAmount: 90000, updatedAt: new Date().toISOString() },
   { id: 'tbl-06', name: 'Bàn 06', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
   { id: 'tbl-07', name: 'Bàn 07', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
@@ -66,7 +68,7 @@ export class TableController {
         const formatted = dbTables.map((t) => ({
           id: t.id,
           name: t.name,
-          status: t.status as 'EMPTY' | 'OCCUPIED' | 'RESERVED',
+          status: (t.status === 'RESERVED' ? 'OCCUPIED' : t.status) as 'EMPTY' | 'OCCUPIED',
           branchId: t.branchId,
           branchName: t.branch?.name,
           branchCode: t.branch?.code,
@@ -85,70 +87,177 @@ export class TableController {
     }
   }
 
+  /**
+   * Chuyển trạng thái bàn sang OCCUPIED khi khách quét mã QR truy cập
+   */
+  static async occupyTableInternal(rawTableId: string, preferredBranchId?: string) {
+    if (!rawTableId) return null;
+
+    const scope = await resolveTableScope(rawTableId);
+    const targetId = scope ? scope.tableId : rawTableId;
+    const targetBranch = scope ? scope.branchId : (preferredBranchId || 'default-branch');
+
+    let updatedTable: any = null;
+    try {
+      const dbTable = await prisma.table.update({
+        where: { id: targetId },
+        data: { status: 'OCCUPIED' },
+      });
+      updatedTable = {
+        id: dbTable.id,
+        name: dbTable.name,
+        status: dbTable.status,
+        branchId: dbTable.branchId,
+        customerCount: dbTable.capacity,
+        updatedAt: dbTable.updatedAt.toISOString(),
+      };
+    } catch {
+      // Fallback in-memory
+    }
+
+    const table = tables.find((t) => t.id === targetId || t.id === rawTableId || t.name === rawTableId);
+    if (table) {
+      table.status = 'OCCUPIED';
+      table.updatedAt = new Date().toISOString();
+      if (!updatedTable) {
+        updatedTable = { ...table };
+      }
+    }
+
+    if (!updatedTable) {
+      updatedTable = { id: targetId, name: scope?.tableName || `Bàn ${targetId}`, status: 'OCCUPIED', branchId: targetBranch, updatedAt: new Date().toISOString() };
+    }
+
+    emitToBranch(targetBranch, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+      tableId: targetId,
+      status: 'OCCUPIED',
+      updatedAt: new Date().toISOString(),
+    });
+
+    return updatedTable;
+  }
+
+  /**
+   * POST /api/tables/occupy (Public rate-limited)
+   * Khách truy cập từ QR -> chuyển bàn sang trạng thái đang có khách
+   */
+  static async occupyTable(req: Request, res: Response) {
+    try {
+      const { tableId, branchId } = req.body;
+      if (!tableId) {
+        return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu thông tin bàn', 400);
+      }
+
+      const result = await TableController.occupyTableInternal(tableId, branchId);
+      return ApiResponse.success(res, result, 'Bàn đã chuyển sang trạng thái đang có khách');
+    } catch (err: any) {
+      return ApiResponse.error(res, 'OCCUPY_TABLE_ERROR', err.message, 500);
+    }
+  }
+
   static async updateStatus(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { status } = req.body;
-      const { branchId } = getTenantContext(req);
+      const { status, branchId: bodyBranchId } = req.body;
+      const { branchId, tenantId } = getTenantContext(req);
+      const role = req.tenantContext?.role;
+      const isPrivileged = role === 'ADMIN' || role === 'PLATFORM_ADMIN';
 
-      if (!status || !['EMPTY', 'OCCUPIED', 'RESERVED'].includes(status)) {
-        return ApiResponse.error(res, 'INVALID_STATUS', 'Trạng thái bàn không hợp lệ', 400);
+      if (!status || !['EMPTY', 'OCCUPIED'].includes(status)) {
+        return ApiResponse.error(res, 'INVALID_STATUS', 'Trạng thái bàn không hợp lệ (chỉ hỗ trợ EMPTY hoặc OCCUPIED)', 400);
       }
 
       let updatedTable: any = null;
+      let targetBranch = bodyBranchId || branchId;
+
+      // 1. Tìm và cập nhật trong Prisma Database
       try {
-        // Scope theo branch: chặn staff branch A đổi trạng thái bàn branch B
-        const owned = await prisma.table.findFirst({ where: { id, branchId }, select: { id: true } });
-        if (!owned) {
-          return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Không tìm thấy bàn', 404);
+        const whereClause: any = { id };
+        if (tenantId) {
+          whereClause.tenantId = tenantId;
         }
-        const dbTable = await prisma.table.update({
-          where: { id: owned.id },
-          data: { status },
+        if (!isPrivileged && branchId && branchId !== 'ALL' && branchId !== 'default-branch') {
+          whereClause.branchId = branchId;
+        }
+
+        let owned = await prisma.table.findFirst({
+          where: whereClause,
+          select: { id: true, branchId: true },
         });
 
-        if (status === 'EMPTY') {
-          try {
-            await prisma.orderSession.updateMany({
-              where: { tableId: id, status: 'OPEN' },
-              data: { status: 'CLOSED', closedAt: new Date() },
-            });
-          } catch {
-            // ignore
+        // Nếu chưa thấy theo id, thử tìm theo name hoặc code
+        if (!owned) {
+          owned = await prisma.table.findFirst({
+            where: {
+              ...(tenantId ? { tenantId } : {}),
+              OR: [{ name: id }, { code: id }],
+            },
+            select: { id: true, branchId: true },
+          });
+        }
+
+        // Nếu vẫn chưa thấy và là admin, thử tìm chỉ theo id
+        if (!owned && isPrivileged) {
+          owned = await prisma.table.findFirst({
+            where: { id },
+            select: { id: true, branchId: true },
+          });
+        }
+
+        if (owned) {
+          const dbTable = await prisma.table.update({
+            where: { id: owned.id },
+            data: { status },
+          });
+
+          if (status === 'EMPTY') {
+            try {
+              await prisma.orderSession.updateMany({
+                where: { tableId: owned.id, status: 'OPEN' },
+                data: { status: 'CLOSED', closedAt: new Date() },
+              });
+            } catch {
+              // ignore
+            }
           }
-        }
 
-        updatedTable = {
-          id: dbTable.id,
-          name: dbTable.name,
-          status: dbTable.status,
-          branchId: dbTable.branchId,
-          customerCount: dbTable.capacity,
-          updatedAt: dbTable.updatedAt.toISOString(),
-        };
-      } catch (e) {
-        // fallback memory
+          targetBranch = dbTable.branchId || targetBranch;
+          updatedTable = {
+            id: dbTable.id,
+            name: dbTable.name,
+            status: dbTable.status,
+            branchId: dbTable.branchId,
+            customerCount: dbTable.capacity,
+            updatedAt: dbTable.updatedAt.toISOString(),
+          };
+        }
+      } catch (dbErr) {
+        // Fallback sang in-memory
       }
 
-      const table = tables.find((t) => t.id === id);
-      if (table) {
-        table.status = status;
+      // 2. Tra cứu & cập nhật trong in-memory (fallback dev hoặc seed mock)
+      const memTable = tables.find((t) => t.id === id || t.name === id);
+      if (memTable) {
+        memTable.status = status;
         if (status === 'EMPTY') {
-          table.currentSessionId = undefined;
-          table.totalAmount = 0;
+          memTable.currentSessionId = undefined;
+          memTable.totalAmount = 0;
         }
-        table.updatedAt = new Date().toISOString();
+        memTable.updatedAt = new Date().toISOString();
         if (!updatedTable) {
-          updatedTable = { ...table };
+          targetBranch = memTable.branchId || targetBranch;
+          updatedTable = { ...memTable };
         }
       }
 
+      // 3. Nếu cả DB và in-memory đều không tìm thấy
       if (!updatedTable) {
-        updatedTable = { id, name: `Bàn ${id}`, status, branchId, updatedAt: new Date().toISOString() };
+        return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Không tìm thấy bàn', 404);
       }
 
-      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
-        tableId: id,
+      // 4. Phát WebSocket cập nhật trạng thái bàn cho POS và Quản lý bàn
+      emitToBranch(targetBranch || 'default-branch', SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+        tableId: updatedTable.id,
         status,
         updatedAt: new Date().toISOString(),
       });
@@ -235,6 +344,89 @@ export class TableController {
       return ApiResponse.success(res, newTable, 'Tạo bàn thành công', 201);
     } catch (err: any) {
       return ApiResponse.error(res, 'CREATE_TABLE_ERROR', err.message, 500);
+    }
+  }
+
+  /**
+   * PATCH /api/tables/:id (ADMIN/MANAGER)
+   * Chuyển bàn sang chi nhánh khác hoặc đổi tên/sức chứa bàn
+   */
+  static async updateTable(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { branchId: targetBranchId, name, capacity } = req.body;
+      const { tenantId } = getTenantContext(req);
+      const role = req.tenantContext?.role;
+
+      if (role !== 'ADMIN' && role !== 'PLATFORM_ADMIN' && role !== 'MANAGER') {
+        return ApiResponse.error(res, 'FORBIDDEN', 'Không có quyền cập nhật thông tin bàn', 403);
+      }
+
+      // Nếu chuyển chi nhánh: xác minh chi nhánh đích thuộc tenant
+      if (targetBranchId && targetBranchId !== 'default-branch' && targetBranchId !== 'ALL') {
+        const branch = await prisma.branch.findFirst({
+          where: { id: targetBranchId, tenantId, isActive: true },
+        });
+        if (!branch) {
+          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh đích không tồn tại', 404);
+        }
+      }
+
+      let updatedTable: any = null;
+      try {
+        const updateData: any = {};
+        if (targetBranchId) updateData.branchId = targetBranchId;
+        if (name && typeof name === 'string') updateData.name = name.trim();
+        if (capacity) updateData.capacity = Number(capacity);
+
+        const dbTable = await prisma.table.update({
+          where: { id },
+          data: updateData,
+          include: {
+            branch: {
+              select: { id: true, name: true, code: true },
+            },
+          },
+        });
+
+        updatedTable = {
+          id: dbTable.id,
+          name: dbTable.name,
+          status: dbTable.status,
+          branchId: dbTable.branchId,
+          branchName: dbTable.branch?.name,
+          branchCode: dbTable.branch?.code,
+          customerCount: dbTable.capacity,
+          updatedAt: dbTable.updatedAt.toISOString(),
+        };
+      } catch {
+        // Fallback in-memory
+      }
+
+      const memTable = tables.find((t) => t.id === id || t.name === id);
+      if (memTable) {
+        if (targetBranchId) memTable.branchId = targetBranchId;
+        if (name) memTable.name = name.trim();
+        if (capacity) memTable.customerCount = Number(capacity);
+        memTable.updatedAt = new Date().toISOString();
+        if (!updatedTable) {
+          updatedTable = { ...memTable };
+        }
+      }
+
+      if (!updatedTable) {
+        return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Không tìm thấy bàn', 404);
+      }
+
+      emitToBranch(targetBranchId || updatedTable.branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+        tableId: updatedTable.id,
+        status: updatedTable.status,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return ApiResponse.success(res, updatedTable, 'Cập nhật thông tin bàn thành công');
+    } catch (err: any) {
+      return ApiResponse.error(res, 'UPDATE_TABLE_ERROR', err.message, 500);
     }
   }
 }

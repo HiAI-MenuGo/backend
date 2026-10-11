@@ -18,6 +18,7 @@ export interface PendingSessionItem {
   quantity: number;
   price: number;
   note?: string;
+  status?: string;
 }
 
 export interface PendingSession {
@@ -188,6 +189,7 @@ export class CashierController {
           quantity: it.quantity,
           price: it.unitPrice,
           note: it.note || undefined,
+          status: it.status,
         }))
       );
 
@@ -209,6 +211,21 @@ export class CashierController {
           discountAmount: session.discountAmount || 0,
           total,
           items,
+          orders: (session.orders || []).map((o) => ({
+            id: o.id,
+            orderCode: o.orderCode,
+            status: o.status,
+            totalAmount: o.totalAmount,
+            createdAt: o.createdAt.toISOString(),
+            items: (o.items || []).map((it) => ({
+              id: it.id,
+              name: it.itemName,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              note: it.note,
+              status: it.status,
+            })),
+          })),
           openedAt: session.openedAt.toISOString(),
         },
         'Lấy thông tin phiên bàn thành công'

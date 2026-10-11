@@ -243,8 +243,22 @@ export class VoucherController {
   static async updateVoucher(req: Request, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin quán', 401);
+      }
       const { id } = req.params;
-      const { isActive, description, endDate, usageLimit } = req.body;
+      const {
+        code,
+        description,
+        type,
+        value,
+        maxDiscount,
+        minOrderVal,
+        usageLimit,
+        startDate,
+        endDate,
+        isActive,
+      } = req.body;
 
       const voucher = await prisma.voucher.findFirst({
         where: { id, tenantId },
@@ -255,10 +269,37 @@ export class VoucherController {
       }
 
       const updateData: any = {};
-      if (isActive !== undefined) updateData.isActive = isActive;
+
+      if (code !== undefined) {
+        const formattedCode = String(code).trim().toUpperCase();
+        if (formattedCode !== voucher.code) {
+          const duplicate = await prisma.voucher.findFirst({
+            where: {
+              tenantId,
+              code: formattedCode,
+              NOT: { id },
+            },
+          });
+          if (duplicate) {
+            return ApiResponse.error(res, 'DUPLICATE_CODE', 'Mã voucher này đã tồn tại trong quán', 400);
+          }
+          updateData.code = formattedCode;
+        }
+      }
+
       if (description !== undefined) updateData.description = description;
-      if (endDate) updateData.endDate = new Date(endDate);
-      if (usageLimit !== undefined) updateData.usageLimit = usageLimit;
+      if (type !== undefined) updateData.type = type as VoucherType;
+      if (value !== undefined) updateData.value = Number(value);
+      if (maxDiscount !== undefined) {
+        updateData.maxDiscount = maxDiscount === '' || maxDiscount === null ? null : Number(maxDiscount);
+      }
+      if (minOrderVal !== undefined) updateData.minOrderVal = Number(minOrderVal);
+      if (usageLimit !== undefined) {
+        updateData.usageLimit = usageLimit === '' || usageLimit === null ? null : Number(usageLimit);
+      }
+      if (startDate !== undefined) updateData.startDate = new Date(startDate);
+      if (endDate !== undefined) updateData.endDate = new Date(endDate);
+      if (isActive !== undefined) updateData.isActive = Boolean(isActive);
 
       const updated = await prisma.voucher.update({
         where: { id },
@@ -273,7 +314,8 @@ export class VoucherController {
   }
 
   /**
-   * DELETE /api/vouchers/:id (soft-disable: isActive=false)
+   * DELETE /api/vouchers/:id
+   * Xóa vĩnh viễn nếu chưa từng sử dụng, hoặc vô hiệu hóa nếu đã có lịch sử đơn hàng
    */
   static async deleteVoucher(req: Request, res: Response) {
     try {
@@ -286,14 +328,25 @@ export class VoucherController {
       if (!voucher) {
         return ApiResponse.error(res, 'NOT_FOUND', 'Không tìm thấy voucher', 404);
       }
-      const updated = await prisma.voucher.update({
-        where: { id },
-        data: { isActive: false },
-      });
-      return ApiResponse.success(res, { id: updated.id, isActive: false }, 'Đã vô hiệu hóa voucher');
+
+      const usageCount = await prisma.voucherUsage.count({ where: { voucherId: id } });
+      if (usageCount === 0 && voucher.usedCount === 0) {
+        await prisma.voucher.delete({ where: { id } });
+        return ApiResponse.success(res, { id, deleted: true }, 'Đã xóa mã khuyến mãi vĩnh viễn');
+      } else {
+        const updated = await prisma.voucher.update({
+          where: { id },
+          data: { isActive: false },
+        });
+        return ApiResponse.success(
+          res,
+          { id: updated.id, isActive: false, softDeleted: true },
+          'Mã này đã có lịch sử áp dụng, hệ thống đã chuyển sang tạm dừng/vô hiệu hóa'
+        );
+      }
     } catch (error: any) {
       logger.error('deleteVoucher failed', { stack: error?.stack });
-      return ApiResponse.error(res, 'DELETE_ERROR', 'Lỗi vô hiệu hóa voucher', 500);
+      return ApiResponse.error(res, 'DELETE_ERROR', 'Lỗi xử lý voucher', 500);
     }
   }
 }

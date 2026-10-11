@@ -227,9 +227,11 @@ export class CustomerRequestController {
       // Phát realtime qua Socket.IO tới màn hình web của thu ngân / phục vụ
       try {
         const io = getIO();
-        io.to(`tenant:${tenantId}`).emit('call_staff:request', newCall);
-        io.to(`branch:${branchId}`).emit('call_staff:request', newCall);
-        io.emit('call_staff:request', newCall); // Fallback toàn hệ thống
+        if (tenantId && tenantId !== 'default-tenant') {
+          io.to(`tenant:${tenantId}`).to(`branch:${branchId}`).emit('call_staff:request', newCall);
+        } else {
+          io.emit('call_staff:request', newCall);
+        }
       } catch (sockErr) {
         console.warn('[CustomerRequest] Socket emit failed:', sockErr);
       }
@@ -310,9 +312,11 @@ export class CustomerRequestController {
       // Bắn socket cập nhật realtime
       try {
         const io = getIO();
-        io.to(`tenant:${calls[idx].tenantId}`).emit('call_staff:updated', calls[idx]);
-        io.to(`branch:${calls[idx].branchId}`).emit('call_staff:updated', calls[idx]);
-        io.emit('call_staff:updated', calls[idx]);
+        if (calls[idx].tenantId && calls[idx].tenantId !== 'default-tenant') {
+          io.to(`tenant:${calls[idx].tenantId}`).to(`branch:${calls[idx].branchId}`).emit('call_staff:updated', calls[idx]);
+        } else {
+          io.emit('call_staff:updated', calls[idx]);
+        }
       } catch {}
 
       return ApiResponse.success(res, calls[idx], 'Cập nhật trạng thái yêu cầu thành công');
@@ -359,9 +363,11 @@ export class CustomerRequestController {
       // Bắn socket thông báo review mới
       try {
         const io = getIO();
-        io.to(`tenant:${tenantId}`).emit('review:new', newReview);
-        io.to(`branch:${branchId}`).emit('review:new', newReview);
-        io.emit('review:new', newReview);
+        if (tenantId && tenantId !== 'default-tenant') {
+          io.to(`tenant:${tenantId}`).to(`branch:${branchId}`).emit('review:new', newReview);
+        } else {
+          io.emit('review:new', newReview);
+        }
       } catch {}
 
       return ApiResponse.success(res, newReview, 'Cảm ơn bạn đã gửi đánh giá!', 201);
