@@ -11,6 +11,13 @@ import logger from './utils/logger';
 import http from 'http';
 import { initSocketServer } from './socket';
 
+// ==========================================
+// TIMEZONE CONFIGURATION - MUST BE FIRST
+// ==========================================
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+// Force Node.js to use GMT+7 for all Date operations
+// This affects: new Date(), Date.now(), toISOString(), toLocaleString(), etc.
+
 dotenv.config();
 
 const app = express();

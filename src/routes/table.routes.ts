@@ -9,6 +9,8 @@ const tableRouter = Router();
 
 // QR mã hóa JWT (public resolve cho khách quét, ký token cho ADMIN/MANAGER)
 tableRouter.get('/resolve', qrMenuRateLimit, TableQrController.resolveQrToken);
+// Khách truy cập từ mã QR -> tự động chuyển trạng thái bàn sang OCCUPIED (Đang có khách)
+tableRouter.post('/occupy', qrMenuRateLimit, TableController.occupyTable);
 tableRouter.get(
   '/:id/qr-token',
   authMiddleware,
@@ -31,6 +33,13 @@ tableRouter.patch(
   enforceTenantIsolation,
   requireRole(['ADMIN', 'MANAGER', 'CASHIER']),
   TableController.updateStatus
+);
+tableRouter.patch(
+  '/:id',
+  authMiddleware,
+  enforceTenantIsolation,
+  requireRole(['ADMIN', 'MANAGER']),
+  TableController.updateTable
 );
 
 export default tableRouter;

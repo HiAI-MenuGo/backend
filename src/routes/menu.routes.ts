@@ -24,5 +24,19 @@ menuRouter.patch(
   requireRole(['ADMIN', 'MANAGER', 'KITCHEN']),
   MenuController.toggleSoldOut
 );
+menuRouter.put(
+  '/items/:id',
+  authMiddleware,
+  enforceTenantIsolation,
+  requireRole(['ADMIN', 'MANAGER']),
+  MenuController.updateItem
+);
+menuRouter.delete(
+  '/items/:id',
+  authMiddleware,
+  enforceTenantIsolation,
+  requireRole(['ADMIN', 'MANAGER']),
+  MenuController.deleteItem
+);
 
 export default menuRouter;

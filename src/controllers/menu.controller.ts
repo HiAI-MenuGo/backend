@@ -121,7 +121,20 @@ export class MenuController {
       const dbItems = await prisma.menuItem.findMany({
         where: { isActive: true, tenantId },
         include: {
-          category: { select: { name: true } },
+          category: { select: { id: true, name: true, isDrink: true } },
+          modifierGroups: {
+            include: {
+              modifierGroup: {
+                include: {
+                  options: {
+                    where: { isSoldOut: false },
+                    orderBy: { displayOrder: 'asc' },
+                  },
+                },
+              },
+            },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
         orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
       });
@@ -130,12 +143,35 @@ export class MenuController {
         const formatted = dbItems.map((item) => ({
           id: item.id,
           name: item.name,
-          category: item.category?.name || 'Món chính',
+          description: item.description || '',
+          category: item.category ? {
+            id: item.category.id,
+            name: item.category.name,
+            isDrink: item.category.isDrink,
+          } : { id: 'all', name: 'Món chính', isDrink: false },
+          categoryId: item.categoryId,
+          basePrice: item.basePrice,
           price: item.basePrice,
           imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1544025162-d76694265947?w=500',
           isSoldOut: item.isSoldOut,
           isPopular: true,
           branchId: branchId || 'default-branch',
+          modifierGroups: item.modifierGroups.map((mg) => ({
+            modifierGroup: {
+              id: mg.modifierGroup.id,
+              name: mg.modifierGroup.name,
+              minSelect: mg.modifierGroup.minSelect,
+              maxSelect: mg.modifierGroup.maxSelect,
+              isRequired: mg.modifierGroup.isRequired,
+              options: mg.modifierGroup.options.map((opt) => ({
+                id: opt.id,
+                name: opt.name,
+                extraPrice: opt.extraPrice,
+                isDefault: opt.isDefault,
+                isSoldOut: opt.isSoldOut,
+              })),
+            },
+          })),
         }));
         return ApiResponse.success(res, formatted, 'Lấy danh sách thực đơn thành công');
       }
@@ -273,6 +309,94 @@ export class MenuController {
       return ApiResponse.success(res, { deletedId: id }, 'Xóa món thành công');
     } catch (err: any) {
       return ApiResponse.error(res, 'DELETE_MENU_ERROR', err.message, 500);
+    }
+  }
+
+  static async updateItem(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { name, category: categoryName, price, imageUrl, description, isPopular, isSoldOut } = req.body;
+      const { tenantId, branchId } = getTenantContext(req);
+
+      let updatedDbItem: any = null;
+      try {
+        const owned = await prisma.menuItem.findFirst({
+          where: { id, tenantId },
+          include: { category: true },
+        });
+
+        if (owned) {
+          let categoryId = owned.categoryId;
+          if (categoryName && categoryName !== owned.category?.name) {
+            let cat = await prisma.menuCategory.findFirst({
+              where: { tenantId, name: categoryName },
+            });
+            if (!cat) {
+              const rawSlug = String(categoryName).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+              cat = await prisma.menuCategory.create({
+                data: {
+                  tenantId,
+                  name: categoryName,
+                  slug: `${rawSlug}-${Date.now().toString().slice(-4)}`,
+                },
+              });
+            }
+            categoryId = cat.id;
+          }
+
+          updatedDbItem = await prisma.menuItem.update({
+            where: { id: owned.id },
+            data: {
+              ...(name ? { name: name.trim() } : {}),
+              ...(price !== undefined ? { basePrice: Number(price) } : {}),
+              ...(imageUrl !== undefined ? { imageUrl: imageUrl?.trim() || null } : {}),
+              ...(description !== undefined ? { description: description?.trim() || null } : {}),
+              ...(categoryId ? { categoryId } : {}),
+              ...(isSoldOut !== undefined ? { isSoldOut: Boolean(isSoldOut) } : {}),
+            },
+            include: { category: true },
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Prisma updateMenuItem fallback:', dbErr);
+      }
+
+      // Cập nhật in-memory fallback
+      let item = menuItems.find((i) => i.id === id);
+      if (item) {
+        if (name) item.name = name.trim();
+        if (categoryName) item.category = categoryName;
+        if (price !== undefined) item.price = Number(price);
+        if (imageUrl !== undefined) item.imageUrl = imageUrl.trim();
+        if (isPopular !== undefined) item.isPopular = Boolean(isPopular);
+        if (isSoldOut !== undefined) item.isSoldOut = Boolean(isSoldOut);
+      } else if (updatedDbItem) {
+        item = {
+          id: updatedDbItem.id,
+          name: updatedDbItem.name,
+          category: updatedDbItem.category?.name || categoryName || 'Món mới',
+          price: Number(updatedDbItem.basePrice),
+          imageUrl: updatedDbItem.imageUrl || '',
+          isPopular: Boolean(isPopular),
+          isSoldOut: Boolean(updatedDbItem.isSoldOut),
+          branchId,
+        };
+      }
+
+      const result = item || {
+        id,
+        name: name || '',
+        category: categoryName || '',
+        price: Number(price) || 0,
+        imageUrl: imageUrl || '',
+        isPopular: Boolean(isPopular),
+        isSoldOut: Boolean(isSoldOut),
+        branchId,
+      };
+
+      return ApiResponse.success(res, result, 'Cập nhật món ăn thành công');
+    } catch (err: any) {
+      return ApiResponse.error(res, 'UPDATE_MENU_ERROR', err.message, 500);
     }
   }
 }

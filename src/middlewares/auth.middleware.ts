@@ -14,10 +14,13 @@ declare global {
   }
 }
 
-/** Parse Authorization: Bearer <token>, verify JWT, inject req.user. */
+/** Parse Authorization: Bearer <token> or cookies, verify JWT, inject req.user. */
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const token = header.startsWith('Bearer ')
+    ? header.slice(7)
+    : (req.cookies?.['auth-token'] || req.cookies?.['token'] || '');
+
   if (!token) {
     return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu access token', 401);
   }
@@ -49,7 +52,10 @@ export function requireRole(allowed: Array<TokenPayload['role']>) {
 /** Optional auth: verify JWT if token exists, inject req.user, don't fail if missing. */
 export function optionalAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const token = header.startsWith('Bearer ')
+    ? header.slice(7)
+    : (req.cookies?.['auth-token'] || req.cookies?.['token'] || '');
+
   if (!token) return next();
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;

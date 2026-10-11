@@ -1,9 +1,80 @@
 import { prisma } from '../utils/prisma';
 
+/**
+ * ==========================================
+ * TIMEZONE HELPERS - GMT+7 (Asia/Ho_Chi_Minh)
+ * ==========================================
+ * All date boundaries for reporting/analytics must use GMT+7
+ * to match business hours in Vietnam.
+ */
+
 export interface OverviewInput {
   branchId?: string;
   date?: string;
   tenantId?: string;
+}
+
+/**
+ * Parse YYYY-MM-DD string as GMT+7 date and return start of day (00:00:00.000 GMT+7)
+ */
+function getGMT7StartOfDay(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  // Create date in GMT+7 by constructing local components
+  // Since process.env.TZ = 'Asia/Ho_Chi_Minh', new Date(y, m-1, d) will be GMT+7
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
+/**
+ * Parse YYYY-MM-DD string as GMT+7 date and return end of day (23:59:59.999 GMT+7)
+ */
+function getGMT7EndOfDay(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+}
+
+/**
+ * Get today's date string in GMT+7 (YYYY-MM-DD)
+ */
+function getGMT7TodayString(): string {
+  const now = new Date();
+  // With TZ=Asia/Ho_Chi_Minh, getFullYear/getMonth/getDate return GMT+7 values
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Get yesterday's date string in GMT+7 (YYYY-MM-DD)
+ */
+function getGMT7YesterdayString(): string {
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  return `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Get hour in GMT+7 from a Date (stored as UTC in DB)
+ */
+function getGMT7Hour(date: Date): number {
+  const gmt7 = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  return gmt7.getHours();
+}
+
+/**
+ * Get date string (YYYY-MM-DD) in GMT+7 from a Date (stored as UTC in DB)
+ */
+function getGMT7DateString(date: Date): string {
+  const gmt7 = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  return `${gmt7.getFullYear()}-${String(gmt7.getMonth() + 1).padStart(2, '0')}-${String(gmt7.getDate()).padStart(2, '0')}`;
+}
+
+function getHourlySlotIndex(hour: number): number {
+  if (hour < 9) return 0; // 08:00
+  if (hour < 11) return 1; // 10:00
+  if (hour < 13) return 2; // 12:00
+  if (hour < 15) return 3; // 14:00
+  if (hour < 17) return 4; // 16:00
+  if (hour < 19) return 5; // 18:00
+  if (hour < 21) return 6; // 20:00
+  return 7; // 22:00
 }
 
 export interface HourlyTrendPoint {
@@ -175,17 +246,6 @@ async function resolveBranch(branchId?: string, userTenantId?: string) {
   return branch;
 }
 
-function getHourlySlotIndex(hour: number): number {
-  if (hour < 9) return 0; // 08:00
-  if (hour < 11) return 1; // 10:00
-  if (hour < 13) return 2; // 12:00
-  if (hour < 15) return 3; // 14:00
-  if (hour < 17) return 4; // 16:00
-  if (hour < 19) return 5; // 18:00
-  if (hour < 21) return 6; // 20:00
-  return 7; // 22:00
-}
-
 export class AnalyticsService {
   /**
    * Tính toán toàn bộ KPI và biểu đồ phân tích dựa trên dữ liệu thật từ Prisma.
@@ -193,18 +253,14 @@ export class AnalyticsService {
   static async getOverview(input: OverviewInput): Promise<AnalyticsOverview> {
     const branch = await resolveBranch(input.branchId, input.tenantId);
 
-    // Tính mốc thời gian hôm nay và hôm qua theo ngày địa phương
-    const now = new Date();
-    const targetDateStr =
-      input.date ||
-      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // Tính mốc thời gian hôm nay và hôm qua theo GMT+7 (Asia/Ho_Chi_Minh)
+    const targetDateStr = input.date || getGMT7TodayString();
+    const yesterdayDateStr = getGMT7YesterdayString();
 
-    const [y, m, d] = targetDateStr.split('-').map(Number);
-    const startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
-    const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
-
-    const startOfYesterday = new Date(y, m - 1, d - 1, 0, 0, 0, 0);
-    const endOfYesterday = new Date(y, m - 1, d - 1, 23, 59, 59, 999);
+    const startOfDay = getGMT7StartOfDay(targetDateStr);
+    const endOfDay = getGMT7EndOfDay(targetDateStr);
+    const startOfYesterday = getGMT7StartOfDay(yesterdayDateStr);
+    const endOfYesterday = getGMT7EndOfDay(yesterdayDateStr);
 
     const branchFilter = branch.id !== 'ALL' ? { branchId: branch.id } : {};
 
@@ -332,7 +388,7 @@ export class AnalyticsService {
 
     for (const session of closedSessionsToday) {
       const timestamp = session.closedAt || session.openedAt;
-      const h = new Date(timestamp).getHours();
+      const h = getGMT7Hour(timestamp);
       const idx = getHourlySlotIndex(h);
       hourlyTrend[idx].revenue += session.finalAmount;
       hourlyTrend[idx].orders += session.orders?.length ?? 0;
@@ -417,30 +473,34 @@ export class AnalyticsService {
   static async getRevenueReport(input: RevenueReportInput): Promise<RevenueReportData> {
     const branch = await resolveBranch(input.branchId, input.tenantId);
 
-    const now = new Date();
-    let startD: Date;
-    let endD: Date;
+    // Sử dụng GMT+7 cho tất cả ranh giới ngày
+    const todayStr = getGMT7TodayString();
+
+    let startDateStr: string;
+    let endDateStr: string;
 
     if (input.startDate) {
-      const [sy, sm, sd] = input.startDate.split('-').map(Number);
-      startD = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+      startDateStr = input.startDate;
     } else {
-      startD = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
+      // Mặc định 30 ngày trước (bao gồm hôm nay)
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 29);
+      startDateStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
     }
 
     if (input.endDate) {
-      const [ey, em, ed] = input.endDate.split('-').map(Number);
-      endD = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+      endDateStr = input.endDate;
     } else {
-      endD = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      endDateStr = todayStr;
     }
 
-    const startDateStr = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}-${String(startD.getDate()).padStart(2, '0')}`;
-    const endDateStr = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, '0')}-${String(endD.getDate()).padStart(2, '0')}`;
+    const startOfDay = getGMT7StartOfDay(startDateStr);
+    const endOfDay = getGMT7EndOfDay(endDateStr);
 
-    const periodMs = endD.getTime() - startD.getTime();
-    const prevStartD = new Date(startD.getTime() - periodMs);
-    const prevEndD = new Date(startD.getTime() - 1);
+    // Tính khoảng thời gian so sánh (kỳ trước)
+    const periodMs = endOfDay.getTime() - startOfDay.getTime();
+    const prevStartOfDay = new Date(startOfDay.getTime() - periodMs);
+    const prevEndOfDay = new Date(startOfDay.getTime() - 1);
 
     const branchFilter = branch.id !== 'ALL' ? { branchId: branch.id } : {};
 
@@ -451,8 +511,8 @@ export class AnalyticsService {
           ...branchFilter,
           status: 'CLOSED',
           OR: [
-            { closedAt: { gte: startD, lte: endD } },
-            { closedAt: null, openedAt: { gte: startD, lte: endD } },
+            { closedAt: { gte: startOfDay, lte: endOfDay } },
+            { closedAt: null, openedAt: { gte: startOfDay, lte: endOfDay } },
           ],
         },
         include: {
@@ -484,8 +544,8 @@ export class AnalyticsService {
           ...branchFilter,
           status: 'CLOSED',
           OR: [
-            { closedAt: { gte: prevStartD, lte: prevEndD } },
-            { closedAt: null, openedAt: { gte: prevStartD, lte: prevEndD } },
+            { closedAt: { gte: prevStartOfDay, lte: prevEndOfDay } },
+            { closedAt: null, openedAt: { gte: prevStartOfDay, lte: prevEndOfDay } },
           ],
         },
         select: { finalAmount: true },
@@ -503,8 +563,11 @@ export class AnalyticsService {
     let orderCount = 0;
 
     const dailyMap = new Map<string, RevenueDailyItem>();
-    const cursor = new Date(startD);
-    while (cursor <= endD) {
+    // Initialize daily map for each day in range (GMT+7)
+    const startCursor = getGMT7StartOfDay(startDateStr);
+    const endCursor = getGMT7StartOfDay(endDateStr);
+    const cursor = new Date(startCursor);
+    while (cursor <= endCursor) {
       const dStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
       dailyMap.set(dStr, {
         date: dStr,
@@ -531,8 +594,7 @@ export class AnalyticsService {
 
     for (const session of closedSessions) {
       const sTimestamp = session.closedAt || session.openedAt;
-      const sDateObj = new Date(sTimestamp);
-      const sDateStr = `${sDateObj.getFullYear()}-${String(sDateObj.getMonth() + 1).padStart(2, '0')}-${String(sDateObj.getDate()).padStart(2, '0')}`;
+      const sDateStr = getGMT7DateString(sTimestamp);
       const dayItem = dailyMap.get(sDateStr);
 
       totalRevenue += session.finalAmount;

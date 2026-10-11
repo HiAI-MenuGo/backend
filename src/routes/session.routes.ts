@@ -34,4 +34,12 @@ sessionRouter.post(
   SessionOrderController.createOrder
 );
 
+// QR Demo Payment (cho phép trang demo của khách chốt phiên khi khách ấn mô phỏng thanh toán)
+sessionRouter.post(
+  '/:tableId/demo-pay',
+  qrOrderRateLimit,
+  validateTableSession,
+  CashierController.simulateTablePayment
+);
+
 export default sessionRouter;

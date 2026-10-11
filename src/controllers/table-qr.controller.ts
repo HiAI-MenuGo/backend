@@ -4,6 +4,8 @@ import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 
+import { TableController } from './table.controller';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_hiai_menugo_2026';
 
 /**
@@ -80,6 +82,14 @@ export class TableQrController {
       if (!payload?.tableId || !payload?.tenantId) {
         return ApiResponse.error(res, 'INVALID_QR', 'Mã QR bàn không hợp lệ', 400);
       }
+
+      // Khách quét QR -> tự động chuyển trạng thái bàn thành OCCUPIED (Đang có khách)
+      try {
+        await TableController.occupyTableInternal(payload.tableId, payload.branchId);
+      } catch (occupyErr) {
+        logger.warn('resolveQrToken: auto occupy table failed', { error: occupyErr });
+      }
+
       return ApiResponse.success(
         res,
         { tableId: payload.tableId, tenantId: payload.tenantId, branchId: payload.branchId || null },
