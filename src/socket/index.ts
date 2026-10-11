@@ -105,6 +105,22 @@ export function initSocketServer(httpServer: HttpServer): Server {
       socket.emit('pong', { timestamp: new Date().toISOString() });
     });
 
+    // Lắng nghe yêu cầu gọi phục vụ / gọi thanh toán từ bàn QR
+    socket.on('call_staff:request', (payload) => {
+      console.log(`🛎️ [Socket.IO] Call staff request received from ${socket.id}:`, payload);
+      if (user?.tenantId) io?.to(`tenant:${user.tenantId}`).emit('call_staff:request', payload);
+      if (user?.branchId) io?.to(`branch:${user.branchId}`).emit('call_staff:request', payload);
+      io?.emit('call_staff:request', payload);
+    });
+
+    // Lắng nghe đánh giá của khách hàng từ bàn QR
+    socket.on('review:new', (payload) => {
+      console.log(`⭐ [Socket.IO] Customer review received from ${socket.id}:`, payload);
+      if (user?.tenantId) io?.to(`tenant:${user.tenantId}`).emit('review:new', payload);
+      if (user?.branchId) io?.to(`branch:${user.branchId}`).emit('review:new', payload);
+      io?.emit('review:new', payload);
+    });
+
     socket.on('disconnect', (reason) => {
       console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id} (${reason})`);
     });

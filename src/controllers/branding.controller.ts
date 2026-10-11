@@ -250,11 +250,16 @@ export class BrandingController {
         }
       }
 
+      const finalLogoUrl =
+        logoUrl !== undefined ? (logoUrl && String(logoUrl).trim() ? String(logoUrl).trim() : null) : undefined;
+      const finalBannerUrl =
+        bannerUrl !== undefined ? (bannerUrl && String(bannerUrl).trim() ? String(bannerUrl).trim() : null) : undefined;
+
       const branding = await prisma.tenantBranding.upsert({
         where: { tenantId },
         update: {
-          ...(logoUrl !== undefined && { logoUrl }),
-          ...(bannerUrl !== undefined && { bannerUrl }),
+          ...(finalLogoUrl !== undefined && { logoUrl: finalLogoUrl }),
+          ...(finalBannerUrl !== undefined && { bannerUrl: finalBannerUrl }),
           ...(primaryColor && { primaryColor }),
           ...(secondaryColor && { secondaryColor }),
           ...(accentColor && { accentColor }),
@@ -267,8 +272,8 @@ export class BrandingController {
         },
         create: {
           tenantId,
-          logoUrl,
-          bannerUrl,
+          logoUrl: finalLogoUrl !== undefined ? finalLogoUrl : null,
+          bannerUrl: finalBannerUrl !== undefined ? finalBannerUrl : null,
           primaryColor: primaryColor || '#f59e0b',
           secondaryColor: secondaryColor || '#d97706',
           accentColor: accentColor || '#fbbf24',
@@ -283,6 +288,16 @@ export class BrandingController {
           tenant: { select: { name: true, code: true, slug: true, status: true } },
         },
       });
+
+      // Phát realtime qua Socket để màn hình Web QR Menu của khách cập nhật ngay lập tức
+      try {
+        const { getIO } = await import('../socket');
+        const io = getIO();
+        io.to(`tenant:${tenantId}`).emit('branding:updated', branding);
+        io.emit('branding:updated', branding);
+      } catch (sockErr) {
+        logger.warn('Socket emit branding:updated failed', { sockErr });
+      }
 
       return ApiResponse.success(res, branding, 'Cập nhật nhận diện thương hiệu thành công');
     } catch (error: any) {

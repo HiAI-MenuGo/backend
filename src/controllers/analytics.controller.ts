@@ -4,18 +4,35 @@ import { AnalyticsService } from '../services/analytics.service';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 
+const flexibleDateSchema = z
+  .string()
+  .optional()
+  .transform((val) => {
+    if (!val) return undefined;
+    const match = val.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+    if (match) {
+      const [, d, m, y] = match;
+      return `${y}-${m}-${d}`;
+    }
+    return val;
+  })
+  .refine(
+    (val) => !val || /^\d{4}-\d{2}-\d{2}$/.test(val),
+    { message: 'Định dạng ngày phải là YYYY-MM-DD hoặc DD-MM-YYYY' }
+  );
+
 export const overviewQuerySchema = z.object({
   query: z.object({
     branchId: z.string().optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày phải là YYYY-MM-DD').optional(),
+    date: flexibleDateSchema,
   }),
 });
 
 export const revenueQuerySchema = z.object({
   query: z.object({
     branchId: z.string().optional(),
-    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày bắt đầu phải là YYYY-MM-DD').optional(),
-    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày kết thúc phải là YYYY-MM-DD').optional(),
+    startDate: flexibleDateSchema,
+    endDate: flexibleDateSchema,
   }),
 });
 

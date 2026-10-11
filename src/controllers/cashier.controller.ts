@@ -9,7 +9,7 @@ import {
 import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import { VietQRService } from '../services/payment/vietqr.service';
-import { emitToBranch, emitToTable, SOCKET_EVENTS } from '../socket';
+import { emitToBranch, emitToTenant, emitToTable, SOCKET_EVENTS } from '../socket';
 import logger from '../utils/logger';
 
 export interface PendingSessionItem {
@@ -279,6 +279,8 @@ export class CashierController {
         sessionId,
         cashReceived,
         paymentMethod = 'CASH',
+        discountAmount: reqDiscount,
+        voucherCode,
       } = req.body;
 
       if (!sessionId) {
@@ -318,7 +320,14 @@ export class CashierController {
         (sum, o) => sum + (o.totalAmount || 0),
         0
       );
-      const totalAmount = dbSession.finalAmount > 0 ? dbSession.finalAmount : ordersTotal;
+      const subTotalAmount = dbSession.subTotal > 0 ? dbSession.subTotal : ordersTotal;
+      const discountAmount = reqDiscount !== undefined
+        ? Math.max(0, Number(reqDiscount) || 0)
+        : (dbSession.discountAmount || 0);
+      const calculatedFinal = Math.max(0, subTotalAmount - discountAmount);
+      const totalAmount = dbSession.finalAmount > 0 && reqDiscount === undefined
+        ? dbSession.finalAmount
+        : calculatedFinal;
 
       const received = Number(cashReceived) || totalAmount;
       if (received < totalAmount) {
@@ -350,13 +359,16 @@ export class CashierController {
           },
         });
 
-        // 2. Đóng phiên gọi món
+        // 2. Đóng phiên gọi món & lưu vết chiết khấu
         await tx.orderSession.update({
           where: { id: sessionId },
           data: {
             status: SessionStatus.CLOSED,
             closedAt: new Date(),
+            subTotal: subTotalAmount,
+            discountAmount: discountAmount,
             finalAmount: totalAmount,
+            ...(voucherCode ? { voucherCode } : {}),
           },
         });
 
@@ -388,8 +400,8 @@ export class CashierController {
         return transaction;
       });
 
-      // Phát sự kiện Realtime qua Socket.IO
-      emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, {
+      // Phát sự kiện Realtime qua Socket.IO tới Branch và Tenant
+      const paymentCompletedPayload = {
         sessionId: dbSession.id,
         tableId: dbSession.tableId,
         tableName: dbSession.table?.name || `Bàn ${dbSession.sessionCode}`,
@@ -397,20 +409,26 @@ export class CashierController {
         method: paymentMethod || 'CASH',
         transactionId: result.id,
         completedAt: new Date().toISOString(),
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentCompletedPayload);
+      emitToTenant(dbSession.tenantId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentCompletedPayload);
 
-      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+      const tableStatusPayload = {
         tableId: dbSession.tableId,
         tableName: dbSession.table?.name || '',
         status: TableStatus.EMPTY,
         branchId,
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
+      emitToTenant(dbSession.tenantId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
 
-      emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, {
+      const sessionUpdatedPayload = {
         sessionId: dbSession.id,
         status: SessionStatus.CLOSED,
         branchId,
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
+      emitToTenant(dbSession.tenantId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
 
       // QR guest của đúng bàn cũng nhận thanh toán hoàn tất
       if (dbSession.tableId) {
@@ -640,8 +658,8 @@ export class CashierController {
       // Xoá cache
       activeQRTransactions.delete(verification.transactionRef);
 
-      // Phát sự kiện Realtime qua Socket.IO
-      emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, {
+      // Phát sự kiện Realtime qua Socket.IO tới Branch và Tenant
+      const webhookPaymentPayload = {
         sessionId: session.id,
         tableId: session.tableId,
         tableName: session.table?.name || `Bàn ${session.sessionCode}`,
@@ -650,20 +668,26 @@ export class CashierController {
         transactionRef: verification.transactionRef,
         transactionId: paymentTx.id,
         completedAt: new Date().toISOString(),
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, webhookPaymentPayload);
+      emitToTenant(session.tenantId, SOCKET_EVENTS.PAYMENT_COMPLETED, webhookPaymentPayload);
 
-      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+      const webhookTablePayload = {
         tableId: session.tableId,
         tableName: session.table?.name || '',
         status: TableStatus.EMPTY,
         branchId,
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, webhookTablePayload);
+      emitToTenant(session.tenantId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, webhookTablePayload);
 
-      emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, {
+      const webhookSessionPayload = {
         sessionId: session.id,
         status: SessionStatus.CLOSED,
         branchId,
-      });
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, webhookSessionPayload);
+      emitToTenant(session.tenantId, SOCKET_EVENTS.SESSION_UPDATED, webhookSessionPayload);
 
       // QR guest của đúng bàn cũng nhận thanh toán hoàn tất
       if (session.tableId) {
@@ -687,6 +711,125 @@ export class CashierController {
     } catch (err: any) {
       logger.error('handleWebhook error', { stack: err?.stack });
       return ApiResponse.error(res, 'WEBHOOK_ERROR', err.message, 500);
+    }
+  }
+
+  /**
+   * POST /api/sessions/:tableId/demo-pay
+   * Khách bấm mô phỏng thanh toán thành công (demo) trên trang QR bàn
+   */
+  static async simulateTablePayment(req: Request, res: Response) {
+    try {
+      const tableId = (req as any).tableContext?.tableId || req.params.tableId;
+      if (!tableId) {
+        return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu mã định danh bàn', 400);
+      }
+
+      const activeSession = await prisma.orderSession.findFirst({
+        where: {
+          tableId,
+          status: { in: [SessionStatus.OPEN, SessionStatus.BILLING] },
+        },
+        include: {
+          table: true,
+          orders: {
+            where: { status: { not: OrderStatus.CANCELLED } },
+          },
+        },
+      });
+
+      if (!activeSession) {
+        return ApiResponse.success(res, { alreadySettled: true }, 'Phiên bàn đã được thanh toán hoặc không tồn tại');
+      }
+
+      const ordersTotal = (activeSession.orders || []).reduce(
+        (sum, o) => sum + (o.totalAmount || 0),
+        0
+      );
+      const subTotalAmount = activeSession.subTotal > 0 ? activeSession.subTotal : ordersTotal;
+      const discountAmount = activeSession.discountAmount || 0;
+      const totalAmount = activeSession.finalAmount > 0 ? activeSession.finalAmount : Math.max(0, subTotalAmount - discountAmount);
+      const branchId = activeSession.branchId;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const transaction = await tx.paymentTransaction.create({
+          data: {
+            sessionId: activeSession.id,
+            amount: totalAmount,
+            method: PaymentMethod.VIETQR,
+            status: PaymentStatus.PAID,
+            paymentGateway: 'VIETQR_DEMO',
+            receivedAmount: totalAmount,
+            changeAmount: 0,
+            paidAt: new Date(),
+          },
+        });
+
+        await tx.orderSession.update({
+          where: { id: activeSession.id },
+          data: {
+            status: SessionStatus.CLOSED,
+            closedAt: new Date(),
+            finalAmount: totalAmount,
+          },
+        });
+
+        await tx.order.updateMany({
+          where: {
+            sessionId: activeSession.id,
+            status: { not: OrderStatus.CANCELLED },
+          },
+          data: { status: OrderStatus.DONE },
+        });
+
+        if (activeSession.tableId) {
+          await tx.table.update({
+            where: { id: activeSession.tableId },
+            data: { status: TableStatus.EMPTY },
+          });
+        }
+
+        return transaction;
+      });
+
+      const paymentPayload = {
+        sessionId: activeSession.id,
+        tableId: activeSession.tableId,
+        tableName: activeSession.table?.name || `Bàn ${activeSession.sessionCode}`,
+        amount: totalAmount,
+        method: 'VIETQR',
+        transactionId: result.id,
+        completedAt: new Date().toISOString(),
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentPayload);
+      emitToTenant(activeSession.tenantId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentPayload);
+
+      const tableStatusPayload = {
+        tableId: activeSession.tableId,
+        tableName: activeSession.table?.name || '',
+        status: TableStatus.EMPTY,
+        branchId,
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
+      emitToTenant(activeSession.tenantId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
+
+      const sessionUpdatedPayload = {
+        sessionId: activeSession.id,
+        status: SessionStatus.CLOSED,
+        branchId,
+      };
+      emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
+      emitToTenant(activeSession.tenantId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
+
+      if (activeSession.tableId) {
+        emitToTable(activeSession.tableId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentPayload);
+        emitToTable(activeSession.tableId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
+      }
+
+      return ApiResponse.success(res, { success: true, total: totalAmount }, 'Mô phỏng thanh toán thành công');
+    } catch (err: any) {
+      logger.error('simulateTablePayment error', { stack: err?.stack });
+      return ApiResponse.error(res, 'SIMULATE_PAYMENT_ERROR', err.message, 500);
     }
   }
 }

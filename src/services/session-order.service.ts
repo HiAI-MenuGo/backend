@@ -3,6 +3,38 @@ import logger from '../utils/logger';
 import { emitToBranch, emitToTable, SOCKET_EVENTS } from '../socket';
 import { VoucherQuoteService } from './voucher-quote.service';
 
+/**
+ * Get current date in GMT+7 (Asia/Ho_Chi_Minh) as YYYYMMDD string
+ * Used for session code generation: SES-YYYYMMDD-XXX
+ */
+function getGMT7DateString(): string {
+  const now = new Date();
+  // toLocaleString with timeZone gives us GMT+7 components
+  const gmt7 = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const year = gmt7.getFullYear();
+  const month = String(gmt7.getMonth() + 1).padStart(2, '0');
+  const day = String(gmt7.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
+/**
+ * Get start of day in GMT+7 as Date object (for DB queries)
+ */
+function getGMT7StartOfDay(date?: Date): Date {
+  const base = date || new Date();
+  const gmt7 = new Date(base.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  return new Date(gmt7.getFullYear(), gmt7.getMonth(), gmt7.getDate(), 0, 0, 0, 0);
+}
+
+/**
+ * Get end of day in GMT+7 as Date object (for DB queries)
+ */
+function getGMT7EndOfDay(date?: Date): Date {
+  const base = date || new Date();
+  const gmt7 = new Date(base.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  return new Date(gmt7.getFullYear(), gmt7.getMonth(), gmt7.getDate(), 23, 59, 59, 999);
+}
+
 export interface CreateSessionOrderItemInput {
   menuItemId: string;
   quantity: number;
@@ -81,8 +113,8 @@ export class SessionOrderService {
           });
 
           const now = new Date();
-          const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const dateStr = getGMT7DateString();
+          const startOfDay = getGMT7StartOfDay(now);
 
           if (!session) {
             // Count sessions today với tenantId + branchId (H1)

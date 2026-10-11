@@ -4,6 +4,8 @@ import prisma from '../utils/prisma';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 
+import { resolveTableScope } from '../utils/tableScope';
+
 export const createTierSchema = z.object({
   body: z.object({
     name: z.string().min(1, 'Tên hạng thành viên không được để trống'),
@@ -27,7 +29,9 @@ export const updateTierSchema = z.object({
 
 export const getCustomerQuerySchema = z.object({
   query: z.object({
-    phone: z.string().min(8, 'Số điện thoại không hợp lệ'),
+    phone: z.string().min(8, 'Số điện thoại không hợp lệ').optional(),
+    search: z.string().optional(),
+    tableId: z.string().optional(),
   }),
 });
 
@@ -178,6 +182,232 @@ export class LoyaltyController {
     } catch (error: any) {
       logger.error('Lỗi khi xoá hạng thành viên', { error: error.message, stack: error.stack });
       return ApiResponse.error(res, 'DELETE_TIER_ERROR', 'Không thể xoá hạng thành viên', 500);
+    }
+  }
+
+  /**
+   * GET /api/customers/public?phone=&tableId=&name=
+   * Endpoint tra cứu hoặc tự động đăng ký hội viên cho khách quét mã QR tại bàn (Public, không yêu cầu auth).
+   * Nếu chưa tồn tại trong DB, tạo mới khách hàng với 50 điểm chào mừng.
+   */
+  static async getPublicCustomerByPhone(req: Request, res: Response) {
+    try {
+      const phone = (req.query.phone as string)?.trim();
+      const tableId = (req.query.tableId as string)?.trim();
+      const name = (req.query.name as string)?.trim();
+
+      if (!phone || phone.length < 8) {
+        return ApiResponse.error(res, 'INVALID_PHONE', 'Số điện thoại không hợp lệ', 400);
+      }
+
+      // Xác định tenantId từ tableId hoặc query hoặc tenant active đầu tiên
+      let tenantId: string | null = null;
+      if (tableId) {
+        const scope = await resolveTableScope(tableId);
+        if (scope) tenantId = scope.tenantId;
+      }
+      if (!tenantId && req.query.tenantId) {
+        tenantId = String(req.query.tenantId);
+      }
+      if (!tenantId) {
+        const activeTenant = await prisma.tenant.findFirst({
+          where: { status: 'ACTIVE' },
+          select: { id: true },
+        });
+        tenantId = activeTenant?.id || null;
+      }
+
+      if (!tenantId) {
+        return ApiResponse.error(res, 'TENANT_NOT_FOUND', 'Không xác định được quán ăn', 404);
+      }
+
+      let customer = await prisma.customer.findUnique({
+        where: {
+          tenantId_phone: {
+            tenantId,
+            phone,
+          },
+        },
+        include: {
+          tier: true,
+        },
+      });
+
+      // Nếu khách chưa tồn tại, tự động tạo mới vào CSDL với 50 điểm thưởng ban đầu
+      let isNew = false;
+      if (!customer) {
+        isNew = true;
+        const defaultTier = await prisma.membershipTier.findFirst({
+          where: { tenantId },
+          orderBy: { minPoints: 'asc' },
+        });
+
+        customer = await prisma.customer.create({
+          data: {
+            tenantId,
+            phone,
+            name: name || phone,
+            loyaltyPoints: 50,
+            totalSpent: 0,
+            tierId: defaultTier?.id,
+          },
+          include: {
+            tier: true,
+          },
+        });
+      }
+
+      const safeCustomer = {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        points: customer.loyaltyPoints,
+        isNew,
+        tier: customer.tier
+          ? {
+              id: customer.tier.id,
+              name: customer.tier.name,
+              discountRate: customer.tier.discountRate,
+              color: customer.tier.color,
+              minPoints: customer.tier.minPoints,
+            }
+          : { id: 'default', name: 'Đồng', discountRate: 0, color: '#B45309', minPoints: 0 },
+        discountRate: customer.tier?.discountRate ?? 0,
+        totalSpent: customer.totalSpent,
+      };
+
+      return ApiResponse.success(res, safeCustomer, isNew ? 'Đăng ký thành viên mới thành công' : 'Tra cứu khách hàng thành công');
+    } catch (error: any) {
+      logger.error('Lỗi khi tra cứu/đăng ký khách hàng công khai', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'PUBLIC_CUSTOMER_ERROR', 'Không thể tra cứu thông tin hội viên', 500);
+    }
+  }
+
+  /**
+   * GET /api/customers?phone= (Staff)
+   * Dual-mode:
+   * - Nếu có query phone: tra cứu chi tiết 1 hội viên (cho thu ngân / POS).
+   * - Nếu không có query phone: lấy danh sách toàn bộ hội viên (cho Web Admin / CustomersView).
+   */
+  static async getCustomers(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
+      }
+
+      const phone = req.query.phone as string;
+      if (phone) {
+        return LoyaltyController.getCustomerByPhone(req, res);
+      }
+
+      const search = (req.query.search as string)?.trim().toLowerCase();
+
+      const customers = await prisma.customer.findMany({
+        where: {
+          tenantId,
+          ...(search
+            ? {
+                OR: [
+                  { phone: { contains: search } },
+                  { name: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          tier: true,
+          sessions: {
+            select: {
+              id: true,
+              finalAmount: true,
+              openedAt: true,
+              status: true,
+            },
+            orderBy: { openedAt: 'desc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const formatted = customers.map((c) => {
+        const lastSession = c.sessions[0];
+        let lastVisitText = 'Mới tham gia';
+        if (lastSession) {
+          const dt = new Date(lastSession.openedAt);
+          lastVisitText = `${dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}, ${dt.toLocaleDateString('vi-VN')}`;
+        }
+
+        return {
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          email: c.email || undefined,
+          tier: c.tier?.name || 'Đồng',
+          tierColor: c.tier?.color || '#B45309',
+          points: c.loyaltyPoints,
+          totalSpend: c.totalSpent,
+          ordersCount: c.sessions.length,
+          lastVisit: lastVisitText,
+        };
+      });
+
+      return ApiResponse.success(res, formatted, 'Lấy danh sách khách hàng thành công');
+    } catch (error: any) {
+      logger.error('Lỗi khi lấy danh sách khách hàng', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'FETCH_CUSTOMERS_ERROR', 'Không thể lấy danh sách khách hàng', 500);
+    }
+  }
+
+  /**
+   * POST /api/customers (ADMIN / CASHIER)
+   * Tạo khách hàng mới thủ công từ Web Admin
+   */
+  static async createCustomer(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
+      }
+
+      const { phone, name, email, tierId, initialPoints } = req.body;
+      if (!phone || phone.trim().length < 8) {
+        return ApiResponse.error(res, 'INVALID_PHONE', 'Số điện thoại không hợp lệ', 400);
+      }
+
+      const existing = await prisma.customer.findUnique({
+        where: { tenantId_phone: { tenantId, phone: phone.trim() } },
+      });
+      if (existing) {
+        return ApiResponse.error(res, 'CUSTOMER_EXISTS', 'Số điện thoại này đã được đăng ký thành viên', 400);
+      }
+
+      let assignedTierId = tierId;
+      if (!assignedTierId) {
+        const defaultTier = await prisma.membershipTier.findFirst({
+          where: { tenantId },
+          orderBy: { minPoints: 'asc' },
+        });
+        assignedTierId = defaultTier?.id;
+      }
+
+      const customer = await prisma.customer.create({
+        data: {
+          tenantId,
+          phone: phone.trim(),
+          name: name?.trim() || phone.trim(),
+          email: email?.trim() || null,
+          tierId: assignedTierId,
+          loyaltyPoints: typeof initialPoints === 'number' ? Math.max(0, initialPoints) : 0,
+          totalSpent: 0,
+        },
+        include: { tier: true },
+      });
+
+      return ApiResponse.success(res, customer, 'Đăng ký thành viên mới thành công', 201);
+    } catch (error: any) {
+      logger.error('Lỗi khi tạo thành viên mới', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'CREATE_CUSTOMER_ERROR', 'Không thể tạo thành viên mới', 500);
     }
   }
 
@@ -339,6 +569,61 @@ export class LoyaltyController {
     } catch (error: any) {
       logger.error('Lỗi khi cộng/trừ điểm tích lũy', { error: error.message, stack: error.stack });
       return ApiResponse.error(res, 'ADJUST_POINTS_ERROR', 'Không thể cập nhật điểm thưởng', 500);
+    }
+  }
+
+  /**
+   * DELETE /api/customers/:id
+   * Xoá khách hàng (CASHIER/MANAGER/ADMIN)
+   */
+  static async deleteCustomer(req: Request, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { id } = req.params;
+
+      if (!tenantId) {
+        return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
+      }
+
+      if (!id) {
+        return ApiResponse.error(res, 'MISSING_ID', 'Thiếu định danh khách hàng cần xoá', 400);
+      }
+
+      // Hỗ trợ tìm kiếm theo ID hoặc theo số điện thoại
+      const existingCustomer = await prisma.customer.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { id },
+            { phone: id },
+          ],
+        },
+      });
+
+      if (!existingCustomer) {
+        return ApiResponse.error(res, 'CUSTOMER_NOT_FOUND', 'Không tìm thấy khách hàng cần xoá', 404);
+      }
+
+      // Xoá quan hệ liên quan nếu cần, sau đó xoá khách hàng
+      await prisma.customer.delete({
+        where: { id: existingCustomer.id },
+      });
+
+      logger.info('Xoá khách hàng thành công (Customer deleted)', {
+        tenantId,
+        customerId: existingCustomer.id,
+        phone: existingCustomer.phone,
+        operatorUserId: req.user?.userId,
+      });
+
+      return ApiResponse.success(
+        res,
+        { id: existingCustomer.id, phone: existingCustomer.phone },
+        'Xoá khách hàng thành công'
+      );
+    } catch (error: any) {
+      logger.error('Lỗi khi xoá khách hàng', { error: error.message, stack: error.stack });
+      return ApiResponse.error(res, 'DELETE_CUSTOMER_ERROR', 'Không thể xoá khách hàng', 500);
     }
   }
 }

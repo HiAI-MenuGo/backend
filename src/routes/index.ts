@@ -26,11 +26,13 @@ import { tierRouter, loyaltyCustomerRouter } from './loyalty.routes';
 import analyticsRouter from './analytics.routes';
 
 import uploadRouter from './upload.routes';
+import customerRequestRouter from './customerRequest.routes';
 
 const rootRouter = Router();
 
 rootRouter.use('/', healthRoutes);
 rootRouter.use('/upload', uploadRouter);
+rootRouter.use('/customer-requests', customerRequestRouter);
 rootRouter.use('/auth', authRouter);
 rootRouter.use('/orders', orderRouter);
 rootRouter.use('/tables', tableRouter);
