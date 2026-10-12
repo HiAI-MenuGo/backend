@@ -1,123 +1,207 @@
-# HiAI-MenuGo — Mandatory Rules (RULES)
+# Backend Rules — HiAI-MenuGo
 
-> Luật cấm và quy tắc bắt buộc. Vi phạm = bug bảo mật hoặc phá vỡ UX. Đọc kỹ trước khi viết bất kỳ dòng code nào.
->
-> - 📖 Nghiệp vụ: [BUSINESS.md](./BUSINESS.md) · 🏗️ Stack: [TECHS.md](./TECHS.md)
-> - 🎨 Design: [SKILLS.md](./SKILLS.md) · 🧭 Index: [AGENTS.md](./AGENTS.md)
+## 1. Architecture & Code Organization
+
+### Layer Separation
+- **Routes** (`src/routes/*`): HTTP definitions only. No business logic.
+- **Controllers** (`src/controllers/*`): Request/response handling, validation, call services.
+- **Services** (`src/services/*`): Pure business logic, DB operations via Prisma, external integrations.
+- **Middlewares** (`src/middlewares/*`): Cross-cutting concerns (auth, tenant isolation, validation, rate limit).
+- **Utils** (`src/utils/*`): Pure helpers (logger, response formatter, Prisma client).
+
+### File Naming
+- Controllers: `<Feature>Controller.ts` (PascalCase)
+- Services: `<feature>.service.ts` (camelCase)
+- Routes: `<feature>.routes.ts` (kebab-case)
+- Middlewares: `<purpose>.middleware.ts` (kebab-case)
 
 ---
 
-## 1. Multi-Tenant RBAC (CRITICAL — Quy Tắc Bảo Mật Số 1)
+## 2. Database & Prisma
 
-SaaS Multi-Tenant — cô lập dữ liệu là yêu cầu an ninh bắt buộc:
+### Schema Changes
+```bash
+# 1. Edit prisma/schema.prisma
+# 2. Format & generate
+npx prisma format
+npx prisma generate
 
-| Role | Phạm vi | Giới hạn |
-|---|---|---|
-| `PLATFORM_ADMIN` | SaaS Operator | Chỉ `/api/platform-admin/*` và `/platform-admin` web. **ZERO ACCESS** dữ liệu kinh doanh của quán. |
-| `ADMIN` | Chủ thương hiệu | Toàn bộ chi nhánh trong cùng `tenantId`. |
-| `MANAGER` | Quản lý chi nhánh | **LUÔN** append `branchId: req.user.branchId` vào query. |
-| `KITCHEN` | Bếp / pha chế | Chỉ KDS routes + toggle sold-out. Không chạm thanh toán. |
-| `CASHIER` | Thu ngân / phục vụ | Chỉ POS/Cashier routes + hoàn kho (inventory reverse). |
+# 3. Create migration
+npx prisma migrate dev --name <descriptive_name>
 
-```typescript
-// ĐÚNG — luôn có tenantId
-const items = await prisma.menuItem.findMany({
-  where: { tenantId: req.user.tenantId, branchId: req.user.branchId },
-});
-
-// SAI NGHIÊM TRỌNG — rò rỉ dữ liệu liên quán
-const items = await prisma.menuItem.findMany({
-  where: { branchId: req.user.branchId }
-});
+# 4. Test build
+npm run build
 ```
 
-Auth JWT thuần: `authMiddleware` + `requireRole([...])` — xem [TECHS.md](./TECHS.md#6-auth--jwt-thuần-bắt-buộc-không-dùng-auth-dịch-vụ). Cấm Supabase Auth / NextAuth / Clerk.
+### Rules
+- **Never** edit migration files after commit.
+- **Never** use raw SQL in application code (only in migrations).
+- All models must have `createdAt` / `updatedAt` (except join tables).
+- All relations: explicit `@relation` with `onDelete: Cascade | SetNull | Restrict`.
+- Multi-tenant: every model has `tenantId` (except Platform-level: Tenant, ApiKey, WebhookConfig).
+- Indexes: add `@@index` for common query patterns (tenantId + branchId + status/date).
+
+### Seed Data
+- Use `upsert` in `prisma/seed.ts` — idempotent, safe to re-run.
+- Default password: `123456` (bcrypt hashed).
+- Tenant code: `TASTY_STATION`, Branch: `TS-01`.
 
 ---
 
-## 2. Quy Chuẩn Backend & API
+## 3. API Design
 
-1. **Response:** LUÔN qua `ApiResponse` helper (`src/utils/response.ts`):
-   ```typescript
-   ApiResponse.success(res, data, 'Lấy danh sách món thành công');
-   ApiResponse.error(res, 'ITEM_NOT_FOUND', 'Món không tồn tại', 404);
-   ```
-2. **Auth middleware:** `router.get('/orders', authMiddleware, requireRole(['ADMIN','MANAGER','CASHIER']), controller)` — `req.user` có `userId, tenantId, branchId, role, permissions`.
-3. **Validation:** mọi body qua Zod `validateBody(schema)`:
-   ```typescript
-   const createItemSchema = z.object({
-     name: z.string().min(1, 'Tên món không được để trống'),
-     price: z.number().positive('Giá phải lớn hơn 0'),
-     categoryId: z.string().uuid(),
-   });
-   ```
-4. **Socket events:** chỉ dùng 11 events chuẩn trong [TECHS.md](./TECHS.md#7-socketio-events-chuẩn-srcsocketseventsts). Không tự đặt tên event mới khi chưa thống nhất.
-5. **Không query SQL thô** — chỉ Prisma. Sửa schema → `npx prisma format` + `npx prisma generate`.
+### Response Format (ApiResponse)
+```typescript
+// Success
+{ success: true, data: T, message?: string }
 
----
+// Error
+{ success: false, errorCode: string, message: string, status?: number }
+```
+Use `ApiResponse.success(res, data, message)` / `ApiResponse.error(res, code, message, status)`.
 
-## 3. Quy Chuẩn Mobile App (`mobile/`)
+### HTTP Status Codes
+- 200: OK
+- 201: Created
+- 400: Validation error (Zod)
+- 401: Unauthorized (token missing/expired)
+- 403: Forbidden (role/tenant/branch mismatch)
+- 404: Not found
+- 409: Conflict (duplicate unique)
+- 422: Unprocessable (business rule violation)
+- 500: Server error
 
-1. **Cấm React Navigation / Expo Router.** Điều hướng qua `activeTab` (`TabType`) + `operationSubView` (`OperationSubView`) trong `App.tsx` và `OperationsScreen.tsx`. Màn hình mới → thêm giá trị vào `OperationSubView` (`types/index.ts`) + branch trong `OperationsScreen.tsx`.
-2. **Cart composite key (khóa cứng):**
-   ```ts
-   const cartItemId = `${item.id}__${JSON.stringify(modifiers)}__${note}`;
-   ```
-   Tăng/giảm/xóa **bắt buộc dùng `cartItemId`**, không dùng `item.id` thuần khi món có modifiers/note. (Bug đã biết: `OrderScreen.tsx` đang truyền `item.id` — phải sửa khi chạm logic cart.)
-3. **Safe Area:** mọi màn hình có header/dock phải dùng `useSafeAreaInsets()`. Không hardcode pixel, không dùng `Constants.statusBarHeight`.
-4. **Theme Tokens:** không hardcode hex trong component con — luôn `theme.colors.*`, `theme.radii.*`, `theme.shadows.*`.
-5. **Icons:** duy nhất `lucide-react-native`, `strokeWidth` 2~2.5.
-6. **Zustand:** `useMenuStore` là single source cho menu; `mockMenuItems` chỉ là seed. Không mutate mock trực tiếp — qua `addItem/updateItem/deleteItem/addCategory` (nhớ dedupe `categories`).
-7. **Mock vs API:** hiện tại data là mock. Khi nối API giữ nguyên interfaces trong `src/types`, chỉ thay implementation + thêm loading/error states.
-8. **Naming:** component PascalCase, store camelCase. Chưa có import alias — dùng relative `../theme`, `../types`, `../data/*`.
+### Validation
+- **Every** request body validated with Zod schema.
+- Schema defined at top of controller file.
+- `safeParse` → return 400 with first issue message.
 
 ---
 
-## 4. Quy Chuẩn Web Frontend (`frontend/`)
+## 4. Authentication & Authorization
 
-1. **i18n:** dùng `useI18n()` từ `@/context/i18nContext`; từ mới bổ sung vào `frontend/context/i18nContext.tsx`.
-2. **Food vs Drink an toàn** — `item.category` có thể là string hoặc `{ id, name }`, luôn type-check trước `.toLowerCase()`:
-   ```typescript
-   const catRaw = item.category || '';
-   const catName = typeof catRaw === 'string' ? catRaw : (catRaw as any)?.name || '';
-   const isDrink = ['coffee','tea','drink','juice','boba','smoothie'].some(k => catName.toLowerCase().includes(k));
-   ```
-3. **QR bàn tích hợp logo:** `QRCodeSVG` từ `qrcode.react`, bắt buộc `level="H"`.
-4. **Import:** không barrel `@/components/auth` — import trực tiếp file (`@/components/auth/RoleGate`).
+### JWT
+- Access token: 15 min, in `Authorization: Bearer` header.
+- Refresh token: 7 days, HttpOnly cookie (`/api/auth` path), rotation + reuse detection.
+- Secret: `JWT_SECRET` env var.
 
----
+### Roles (RBAC)
+| Role | Scope | Permissions |
+|------|-------|-------------|
+| `PLATFORM_ADMIN` | All tenants | Manage tenants, plans, platform config |
+| `ADMIN` | Tenant (all branches) | Menu, staff, branches, analytics, settings |
+| `MANAGER` | Assigned branch(es) | Inventory, Z-Report, staff scheduling |
+| `KITCHEN` | Assigned branch | Tiếp nhận & cập nhật trạng thái đơn hàng / món |
+| `CASHIER` | Assigned branch | POS: create orders, payment, tables |
 
-## 5. Critical UI Rules (đã thiết lập, không được phá)
+### Middleware Chain
+```typescript
+router.use(authMiddleware, enforceTenantIsolation, requireRole(['ADMIN', 'MANAGER']))
+```
 
-- **A. Note món multi-line bắt buộc** (`CashierClient`, `kds/page`, `KitchenTicketTemplate`, `ReceiptPrintTemplate`, `OrdersScreen` mobile): chuỗi `item.note` nối bằng `•`/`|` phải tách thành từng dòng có bullet, không hiển thị nguyên chuỗi dài. POS/KDS dùng text cam/vàng; bill in nhiệt dùng `- xxx` chữ đen.
-- **B. Nút HỦY MÓN trong POS luôn canh phải** (`justify-end`, `text-rose-400 border-rose-500/20`) — tránh bấm nhầm.
-- **C. Nút Thanh Toán QR Menu chống giật:** thêm `!isInitializing` vào điều kiện render để không chớp khi Socket `PENDING` đang đồng bộ.
-- **D. Form tích điểm đồng bộ branding:** container SĐT + nút xác nhận dùng `primaryColor`/`secondaryColor` của quán; badge hạng + badge điểm cùng 1 hàng flex.
-- **E. Bản in nhiệt:** phiếu bếp và hóa đơn chữ đen trên trắng, đủ thông tin bill + VietQR chân bill, không icon màu/viền lòe loẹt (hỏng đầu kim 80mm/58mm).
-
----
-
-## 6. Quy Tắc Hành Vi Của Agent
-
-1. **Git Push:** TUYỆT ĐỐI KHÔNG tự ý `git push`. Chỉ commit local, chờ user xác nhận mới push.
-2. **Atomic Commits:** mỗi tính năng/fix là 1 commit riêng, Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
-3. **Bảo toàn mã nguồn:** không xóa tính năng/chú thích hiện có trừ khi user yêu cầu rõ.
-4. **Cổng:** Backend `5000`/`5001`, Web `3000`, Metro `8081` — không tự đổi.
-5. **Không commit** `.expo`, `node_modules`, `package-lock.json` thay đổi không cần thiết.
-6. **Code xong phải cập nhật Workflow (luật dùng chung — áp dụng mọi agent/thành viên):**
-   - Agent code/vibe xong tính năng nào → **trong cùng phiên làm việc**, trước khi báo xong, PHẢI tự cập nhật file workflow tương ứng, không đợi user nhắc:
-     - Thành viên A → `docs/A_Work_Flow.md` · B → `docs/B_Work_Flow.md` · C → `docs/C_Work_Flow.md`.
-   - Nội dung cập nhật: đổi trạng thái task/file liên quan (🟡 → 🟢 khi đạt "Định nghĩa hoàn thành", giữ 🟡 + ghi chú nếu mới xong một phần), ghi ngày hoàn thành + hash commit + file đã chạm.
-   - Task chưa có trong workflow → tự bổ sung vào đúng Giai đoạn/Phase tương ứng, không tự ý xóa task của người khác.
-   - Ví dụ: người C vibe xong QR Menu → agent cập nhật `docs/C_Work_Flow.md` (đánh dấu task QR Menu hoàn thành, file `app/table/[tableId]/page.tsx` → 🟢) rồi mới báo cáo.
+### Tenant Isolation (CRITICAL)
+- **Every** Prisma query MUST filter by `tenantId` from `req.user.tenantId`.
+- `enforceTenantIsolation` middleware sets `req.tenantContext = { tenantId, branchId, role, userId }`.
+- Use `getTenantContext(req)` in services for type-safe access.
+- Never trust client-sent `tenantId` / `branchId` — always derive from JWT.
 
 ---
 
-## 7. Checklist Khi Thêm Tính Năng Mới
+## 5. Socket.IO
 
-- [ ] Type mới → `src/types/index.ts`; màu/radii/shadow mới → `src/theme/index.ts` (không hardcode).
-- [ ] Màn hình thao tác mobile → thêm `OperationSubView` + branch trong `OperationsScreen.tsx`.
-- [ ] State toàn cục → mở rộng `useMenuStore` hoặc store mới `src/data/*.ts`.
-- [ ] Query DB nào cũng có `tenantId` (+ `branchId` nếu cấp chi nhánh).
-- [ ] Dùng `theme.colors.*`, `lucide-react-native`, `StyleSheet.create`, Safe Area insets.
-- [ ] Test iOS notch 44pt + Android status bar — kiểm tra dock không bị Home Indicator che; `BottomNav` ẩn đúng ở sub-view (`App.tsx`).
+### Room Structure
+- `tenant:{tenantId}` — tenant-wide broadcasts (admin alerts)
+- `branch:{branchId}` — branch-wide (orders, tables, payments)
+- `table:{tableId}` — guest QR menu (single table)
+
+### Event Naming
+- Format: `<resource>:<action>` (e.g., `order:new`, `payment:completed`, `table:status-changed`)
+- Defined in `src/socket/events.ts` as `SOCKET_EVENTS` enum.
+
+### Auth
+- Token in `socket.handshake.auth.token` OR `Authorization` header.
+- Fallback: `tenantId`, `branchId`, `tableId` from query/auth for guest QR.
+- GUEST (no JWT) → only join `table:{tableId}` room.
+
+### Emission Helpers
+```typescript
+emitToTenant(tenantId, 'order:new', data)
+emitToBranch(branchId, 'payment:completed', data)
+emitToTable(tableId, 'call_staff:request', data)
+```
+
+---
+
+## 6. Error Handling & Logging
+
+### Logger (Winston)
+- `logger.info()`, `logger.warn()`, `logger.error()` — structured JSON.
+- Request ID propagated via `req.id` (set in `app.ts`).
+
+### Error Handling
+- Controllers: try/catch → `ApiResponse.error(res, code, message, 500)`.
+- Prisma errors: catch `P2003` (FK), `P2002` (unique) → map to 400/409.
+- Never leak stack traces to client.
+
+---
+
+## 7. Security
+
+- Helmet enabled (`app.ts`).
+- Rate limit: 2000 req / 15 min per IP (`express-rate-limit`).
+- CORS: `FRONTEND_URL` only (configurable).
+- Input validation: Zod on every endpoint.
+- File upload: Multer + Cloudinary, validate mime/size.
+- Webhook signature verification (Pay2S: `PAY2S_WEBHOOK_SECRET`).
+
+---
+
+## 8. Environment Variables
+
+Required `.env`:
+```env
+PORT=5000
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
+DATABASE_URL=postgresql://...
+JWT_SECRET=...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+PAY2S_WEBHOOK_SECRET=...
+SMTP_HOST=...
+SMTP_PORT=...
+SMTP_USER=...
+SMTP_PASS=...
+```
+
+---
+
+## 9. Testing & Quality
+
+```bash
+npm run build        # TypeScript compile check
+npm run lint         # ESLint (if configured)
+npx prisma validate  # Schema syntax check
+```
+
+### Pre-commit (manual)
+- Run `npm run build` before push.
+- No `console.log` in production code (use `logger`).
+- No `any` types — use proper interfaces.
+
+---
+
+## 10. Multi-Instance / Production
+
+### Current Limitation
+- **Socket.IO not shared across instances** — each backend has isolated rooms.
+- For horizontal scaling: add Redis adapter (`@socket.io/redis-adapter` + ioredis).
+
+### Deployment Checklist
+- `NODE_ENV=production`
+- `npm run db:deploy` (migrations)
+- `npm run build` → `npm start`
+- Reverse proxy (Nginx) → `localhost:5000`
+- WebSocket upgrade support in proxy
+- Redis for Socket.IO adapter (if multi-instance)
