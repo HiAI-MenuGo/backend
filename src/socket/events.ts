@@ -63,6 +63,7 @@ export interface TableStatusChangedPayload {
   status: 'EMPTY' | 'OCCUPIED' | 'RESERVED';
   branchId?: string;
   currentSessionId?: string;
+  scannedCustomerCount?: number;
 }
 
 export interface PaymentCompletedPayload {

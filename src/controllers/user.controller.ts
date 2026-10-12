@@ -10,7 +10,7 @@ export const MANAGEABLE_ROLES: Array<{ role: UserRole; label: string; scope: str
   { role: 'ADMIN', label: 'Chủ quán', scope: 'tenant' },
   { role: 'MANAGER', label: 'Quản lý chi nhánh', scope: 'branch' },
   { role: 'KITCHEN', label: 'Bếp / pha chế', scope: 'branch' },
-  { role: 'CASHIER', label: 'Thu ngân / phục vụ', scope: 'branch' },
+  { role: 'CASHIER', label: 'Nhân viên', scope: 'branch' },
 ];
 
 export class UserController {

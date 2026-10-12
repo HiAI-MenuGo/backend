@@ -6,6 +6,11 @@ import logger from '../utils/logger';
 
 import { resolveTableScope } from '../utils/tableScope';
 
+export function cleanVNPhone(p?: string | null): string {
+  if (!p) return '';
+  return p.trim().replace(/^\+84\s*/, '0').replace(/^84\s*/, '0').replace(/\s+/g, '');
+}
+
 export const createTierSchema = z.object({
   body: z.object({
     name: z.string().min(1, 'Tên hạng thành viên không được để trống'),
@@ -192,7 +197,8 @@ export class LoyaltyController {
    */
   static async getPublicCustomerByPhone(req: Request, res: Response) {
     try {
-      const phone = (req.query.phone as string)?.trim();
+      const rawPhone = (req.query.phone as string)?.trim();
+      const phone = cleanVNPhone(rawPhone);
       const tableId = (req.query.tableId as string)?.trim();
       const name = (req.query.name as string)?.trim();
 
@@ -260,7 +266,7 @@ export class LoyaltyController {
       const safeCustomer = {
         id: customer.id,
         name: customer.name,
-        phone: customer.phone,
+        phone: cleanVNPhone(customer.phone),
         points: customer.loyaltyPoints,
         isNew,
         tier: customer.tier
@@ -341,7 +347,7 @@ export class LoyaltyController {
         return {
           id: c.id,
           name: c.name,
-          phone: c.phone,
+          phone: cleanVNPhone(c.phone),
           email: c.email || undefined,
           tier: c.tier?.name || 'Đồng',
           tierColor: c.tier?.color || '#B45309',
@@ -370,13 +376,14 @@ export class LoyaltyController {
         return ApiResponse.error(res, 'UNAUTHORIZED', 'Thiếu thông tin tenantId', 401);
       }
 
-      const { phone, name, email, tierId, initialPoints } = req.body;
-      if (!phone || phone.trim().length < 8) {
+      const { phone: rawPhone, name, email, tierId, initialPoints } = req.body;
+      const phone = cleanVNPhone(rawPhone);
+      if (!phone || phone.length < 8) {
         return ApiResponse.error(res, 'INVALID_PHONE', 'Số điện thoại không hợp lệ', 400);
       }
 
       const existing = await prisma.customer.findUnique({
-        where: { tenantId_phone: { tenantId, phone: phone.trim() } },
+        where: { tenantId_phone: { tenantId, phone } },
       });
       if (existing) {
         return ApiResponse.error(res, 'CUSTOMER_EXISTS', 'Số điện thoại này đã được đăng ký thành viên', 400);
@@ -444,7 +451,7 @@ export class LoyaltyController {
       const safeCustomer = {
         id: customer.id,
         name: customer.name,
-        phone: customer.phone,
+        phone: cleanVNPhone(customer.phone),
         points: customer.loyaltyPoints,
         tier: customer.tier
           ? {

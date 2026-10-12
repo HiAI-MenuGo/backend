@@ -585,7 +585,7 @@ async function main() {
   const customersData = [
     {
       name: 'Uthman ibn Hunaif',
-      phone: '+84 678 890 000',
+      phone: '0678890000',
       email: 'uthman.hunaif@gmail.com',
       tierName: 'Diamond',
       loyaltyPoints: 1240,
@@ -593,7 +593,7 @@ async function main() {
     },
     {
       name: "Bashir ibn Sa'ad",
-      phone: '+84 912 345 678',
+      phone: '0912345678',
       email: 'bashir.saad@outlook.com',
       tierName: 'Gold',
       loyaltyPoints: 780,
@@ -601,7 +601,7 @@ async function main() {
     },
     {
       name: 'Ali Raza',
-      phone: '+84 342 556 555',
+      phone: '0342556555',
       email: 'ali.raza@techcorp.vn',
       tierName: 'Gold',
       loyaltyPoints: 620,
@@ -609,7 +609,7 @@ async function main() {
     },
     {
       name: 'Khunais ibn Hudhafa',
-      phone: '+84 905 112 233',
+      phone: '0905112233',
       email: 'khunais.h@gmail.com',
       tierName: 'Silver',
       loyaltyPoints: 340,
@@ -617,7 +617,7 @@ async function main() {
     },
     {
       name: "Mus'ab ibn Umayr",
-      phone: '+84 800 563 554',
+      phone: '0800563554',
       email: 'musab.umayr@yahoo.com',
       tierName: 'Silver',
       loyaltyPoints: 295,
@@ -625,7 +625,7 @@ async function main() {
     },
     {
       name: 'Shuja ibn Wahb',
-      phone: '+84 779 881 202',
+      phone: '0779881202',
       email: 'shuja.wahb@domain.com',
       tierName: 'Bronze',
       loyaltyPoints: 110,
@@ -633,7 +633,7 @@ async function main() {
     },
     {
       name: 'Sarah Nguyen',
-      phone: '+84 938 123 456',
+      phone: '0938123456',
       email: 'sarah.nguyen@email.com',
       tierName: 'Diamond',
       loyaltyPoints: 1560,
@@ -641,7 +641,7 @@ async function main() {
     },
     {
       name: 'Michael Tran',
-      phone: '+84 909 876 543',
+      phone: '0909876543',
       email: 'michael.tran@fnb.vn',
       tierName: 'Gold',
       loyaltyPoints: 890,

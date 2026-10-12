@@ -12,19 +12,20 @@ export interface TableItem {
   branchId: string;
   currentSessionId?: string;
   customerCount?: number;
+  scannedCustomerCount?: number;
   totalAmount?: number;
   updatedAt: string;
 }
 
 let tables: TableItem[] = [
-  { id: 'tbl-01', name: 'Bàn 01', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
-  { id: 'tbl-02', name: 'Bàn 02', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-02', customerCount: 3, totalAmount: 125000, updatedAt: new Date().toISOString() },
-  { id: 'tbl-03', name: 'Bàn 03', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
-  { id: 'tbl-04', name: 'Bàn 04', status: 'EMPTY', branchId: 'default-branch', customerCount: 4, updatedAt: new Date().toISOString() },
-  { id: 'tbl-05', name: 'Bàn 05', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-05', customerCount: 2, totalAmount: 90000, updatedAt: new Date().toISOString() },
-  { id: 'tbl-06', name: 'Bàn 06', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
-  { id: 'tbl-07', name: 'Bàn 07', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
-  { id: 'tbl-08', name: 'Bàn 08', status: 'EMPTY', branchId: 'default-branch', updatedAt: new Date().toISOString() },
+  { id: 'tbl-01', name: 'Bàn 01', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
+  { id: 'tbl-02', name: 'Bàn 02', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-02', customerCount: 3, scannedCustomerCount: 1, totalAmount: 125000, updatedAt: new Date().toISOString() },
+  { id: 'tbl-03', name: 'Bàn 03', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
+  { id: 'tbl-04', name: 'Bàn 04', status: 'EMPTY', branchId: 'default-branch', customerCount: 4, scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
+  { id: 'tbl-05', name: 'Bàn 05', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-05', customerCount: 2, scannedCustomerCount: 1, totalAmount: 90000, updatedAt: new Date().toISOString() },
+  { id: 'tbl-06', name: 'Bàn 06', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
+  { id: 'tbl-07', name: 'Bàn 07', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
+  { id: 'tbl-08', name: 'Bàn 08', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
 ];
 
 import prisma from '../utils/prisma';
@@ -73,6 +74,7 @@ export class TableController {
           branchName: t.branch?.name,
           branchCode: t.branch?.code,
           customerCount: t.capacity,
+          scannedCustomerCount: t.status === 'OCCUPIED' ? 1 : 0,
           updatedAt: t.updatedAt.toISOString(),
         }));
         return ApiResponse.success(res, formatted, 'Lấy danh sách bàn thành công');
@@ -81,7 +83,11 @@ export class TableController {
       // Fallback in-memory (dev): filter theo scope đã tính ở whereClause
       const fallbackBranch = (whereClause as any).branchId as string | undefined;
       const list = fallbackBranch ? tables.filter((t) => t.branchId === fallbackBranch) : tables;
-      return ApiResponse.success(res, list, 'Lấy danh sách bàn thành công');
+      const listWithScanned = list.map(t => ({
+        ...t,
+        scannedCustomerCount: t.status === 'OCCUPIED' ? (t.scannedCustomerCount || 1) : 0,
+      }));
+      return ApiResponse.success(res, listWithScanned, 'Lấy danh sách bàn thành công');
     } catch (err: any) {
       return ApiResponse.error(res, 'FETCH_TABLES_ERROR', err.message, 500);
     }
@@ -118,6 +124,7 @@ export class TableController {
     const table = tables.find((t) => t.id === targetId || t.id === rawTableId || t.name === rawTableId);
     if (table) {
       table.status = 'OCCUPIED';
+      table.scannedCustomerCount = 1;
       table.updatedAt = new Date().toISOString();
       if (!updatedTable) {
         updatedTable = { ...table };
@@ -125,12 +132,13 @@ export class TableController {
     }
 
     if (!updatedTable) {
-      updatedTable = { id: targetId, name: scope?.tableName || `Bàn ${targetId}`, status: 'OCCUPIED', branchId: targetBranch, updatedAt: new Date().toISOString() };
+      updatedTable = { id: targetId, name: scope?.tableName || `Bàn ${targetId}`, status: 'OCCUPIED', branchId: targetBranch, scannedCustomerCount: 1, updatedAt: new Date().toISOString() };
     }
 
     emitToBranch(targetBranch, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
       tableId: targetId,
       status: 'OCCUPIED',
+      scannedCustomerCount: 1,
       updatedAt: new Date().toISOString(),
     });
 
@@ -242,6 +250,9 @@ export class TableController {
         if (status === 'EMPTY') {
           memTable.currentSessionId = undefined;
           memTable.totalAmount = 0;
+          memTable.scannedCustomerCount = 0;
+        } else if (status === 'OCCUPIED') {
+          memTable.scannedCustomerCount = memTable.scannedCustomerCount || 1;
         }
         memTable.updatedAt = new Date().toISOString();
         if (!updatedTable) {
@@ -259,6 +270,7 @@ export class TableController {
       emitToBranch(targetBranch || 'default-branch', SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
         tableId: updatedTable.id,
         status,
+        scannedCustomerCount: status === 'EMPTY' ? 0 : 1,
         updatedAt: new Date().toISOString(),
       });
 
