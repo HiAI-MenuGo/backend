@@ -361,33 +361,32 @@ export class TableController {
 
   /**
    * PATCH /api/tables/:id (ADMIN/MANAGER)
-   * Chuyển bàn sang chi nhánh khác hoặc đổi tên/sức chứa bàn
+   * Cập nhật thông tin bàn (tên, sức chứa).
+   * Tuyệt đối không cho phép đổi bàn qua chi nhánh khác để đảm bảo tính toàn vẹn dữ liệu chi nhánh.
    */
   static async updateTable(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { branchId: targetBranchId, name, capacity } = req.body;
-      const { tenantId } = getTenantContext(req);
+      const { name, capacity, branchId: requestedBranchId } = req.body;
       const role = req.tenantContext?.role;
 
       if (role !== 'ADMIN' && role !== 'PLATFORM_ADMIN' && role !== 'MANAGER') {
         return ApiResponse.error(res, 'FORBIDDEN', 'Không có quyền cập nhật thông tin bàn', 403);
       }
 
-      // Nếu chuyển chi nhánh: xác minh chi nhánh đích thuộc tenant
-      if (targetBranchId && targetBranchId !== 'default-branch' && targetBranchId !== 'ALL') {
-        const branch = await prisma.branch.findFirst({
-          where: { id: targetBranchId, tenantId, isActive: true },
-        });
-        if (!branch) {
-          return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh đích không tồn tại', 404);
-        }
+      // Xoá bỏ / Chặn hoàn toàn tính năng đổi bàn qua chi nhánh khác ở Backend
+      if (requestedBranchId) {
+        return ApiResponse.error(
+          res,
+          'CANNOT_CHANGE_BRANCH',
+          'Hệ thống không hỗ trợ đổi bàn sang chi nhánh khác. Bàn phải thuộc cố định một chi nhánh.',
+          400
+        );
       }
 
       let updatedTable: any = null;
       try {
         const updateData: any = {};
-        if (targetBranchId) updateData.branchId = targetBranchId;
         if (name && typeof name === 'string') updateData.name = name.trim();
         if (capacity) updateData.capacity = Number(capacity);
 
@@ -417,7 +416,6 @@ export class TableController {
 
       const memTable = tables.find((t) => t.id === id || t.name === id);
       if (memTable) {
-        if (targetBranchId) memTable.branchId = targetBranchId;
         if (name) memTable.name = name.trim();
         if (capacity) memTable.customerCount = Number(capacity);
         memTable.updatedAt = new Date().toISOString();
@@ -430,7 +428,7 @@ export class TableController {
         return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Không tìm thấy bàn', 404);
       }
 
-      emitToBranch(targetBranchId || updatedTable.branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+      emitToBranch(updatedTable.branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
         tableId: updatedTable.id,
         status: updatedTable.status,
         updatedAt: new Date().toISOString(),

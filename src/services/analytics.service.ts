@@ -106,6 +106,25 @@ export interface RevenueDailyItem {
   discount: number;
 }
 
+export interface RevenueHourlyItem {
+  time: string;
+  hour: number;
+  orders: number;
+  revenue: number;
+  cash: number;
+  vietqr: number;
+}
+
+export interface RevenueMonthlyItem {
+  month: string;
+  label: string;
+  shortLabel: string;
+  orders: number;
+  revenue: number;
+  cash: number;
+  vietqr: number;
+}
+
 export interface RevenueReportData {
   branch: {
     id: string;
@@ -128,6 +147,8 @@ export interface RevenueReportData {
     totalDiscount: number;
   };
   dailyTrend: RevenueDailyItem[];
+  hourlyTrend: RevenueHourlyItem[];
+  monthlyTrend: RevenueMonthlyItem[];
   paymentBreakdown: Array<{
     method: string;
     label: string;
@@ -580,6 +601,56 @@ export class AnalyticsService {
       cursor.setDate(cursor.getDate() + 1);
     }
 
+    // Initialize hourly map (24 giờ: 00:00 -> 23:00)
+    const hourlyMap = new Map<number, RevenueHourlyItem>();
+    for (let h = 0; h < 24; h++) {
+      hourlyMap.set(h, {
+        time: `${String(h).padStart(2, '0')}:00`,
+        hour: h,
+        orders: 0,
+        revenue: 0,
+        cash: 0,
+        vietqr: 0,
+      });
+    }
+
+    // Initialize monthly map (12 tháng hoặc các tháng trong khoảng)
+    const monthlyMap = new Map<string, RevenueMonthlyItem>();
+    const startYear = startCursor.getFullYear();
+    const endYear = endCursor.getFullYear();
+    if (startYear === endYear) {
+      for (let m = 1; m <= 12; m++) {
+        const mKey = `${startYear}-${String(m).padStart(2, '0')}`;
+        monthlyMap.set(mKey, {
+          month: mKey,
+          label: `Tháng ${m}`,
+          shortLabel: `T${m}`,
+          orders: 0,
+          revenue: 0,
+          cash: 0,
+          vietqr: 0,
+        });
+      }
+    } else {
+      const mCur = new Date(startCursor.getFullYear(), startCursor.getMonth(), 1);
+      const mEnd = new Date(endCursor.getFullYear(), endCursor.getMonth(), 1);
+      while (mCur <= mEnd) {
+        const y = mCur.getFullYear();
+        const m = mCur.getMonth() + 1;
+        const mKey = `${y}-${String(m).padStart(2, '0')}`;
+        monthlyMap.set(mKey, {
+          month: mKey,
+          label: `Tháng ${m}/${y}`,
+          shortLabel: `T${m}/${String(y).slice(-2)}`,
+          orders: 0,
+          revenue: 0,
+          cash: 0,
+          vietqr: 0,
+        });
+        mCur.setMonth(mCur.getMonth() + 1);
+      }
+    }
+
     const itemMap = new Map<string, TopSellingItem>();
     const catMap = new Map<string, { revenue: number; count: number }>();
     const recentOrders: Array<{
@@ -597,6 +668,12 @@ export class AnalyticsService {
       const sDateStr = getGMT7DateString(sTimestamp);
       const dayItem = dailyMap.get(sDateStr);
 
+      const sHour = getGMT7Hour(sTimestamp);
+      const hourItem = hourlyMap.get(sHour);
+
+      const sMonthStr = sDateStr.slice(0, 7);
+      const monthItem = monthlyMap.get(sMonthStr);
+
       totalRevenue += session.finalAmount;
       totalDiscount += session.discountAmount;
       orderCount += session.orders.length;
@@ -606,6 +683,14 @@ export class AnalyticsService {
         dayItem.discount += session.discountAmount;
         dayItem.orders += session.orders.length;
       }
+      if (hourItem) {
+        hourItem.revenue += session.finalAmount;
+        hourItem.orders += session.orders.length;
+      }
+      if (monthItem) {
+        monthItem.revenue += session.finalAmount;
+        monthItem.orders += session.orders.length;
+      }
 
       let primaryMethod = 'CASH';
       if (session.transactions && session.transactions.length > 0) {
@@ -613,16 +698,22 @@ export class AnalyticsService {
           if (tx.method === 'VIETQR') {
             qrRevenue += tx.amount;
             if (dayItem) dayItem.vietqr += tx.amount;
+            if (hourItem) hourItem.vietqr += tx.amount;
+            if (monthItem) monthItem.vietqr += tx.amount;
             primaryMethod = 'VIETQR';
           } else {
             cashRevenue += tx.amount;
             if (dayItem) dayItem.cash += tx.amount;
+            if (hourItem) hourItem.cash += tx.amount;
+            if (monthItem) monthItem.cash += tx.amount;
             primaryMethod = 'CASH';
           }
         }
       } else {
         cashRevenue += session.finalAmount;
         if (dayItem) dayItem.cash += session.finalAmount;
+        if (hourItem) hourItem.cash += session.finalAmount;
+        if (monthItem) monthItem.cash += session.finalAmount;
         primaryMethod = 'CASH';
       }
 
@@ -723,6 +814,8 @@ export class AnalyticsService {
         totalDiscount,
       },
       dailyTrend: Array.from(dailyMap.values()),
+      hourlyTrend: Array.from(hourlyMap.values()),
+      monthlyTrend: Array.from(monthlyMap.values()),
       paymentBreakdown,
       topItems,
       categoryBreakdown,
