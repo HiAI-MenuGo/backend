@@ -27,12 +27,14 @@ import analyticsRouter from './analytics.routes';
 
 import uploadRouter from './upload.routes';
 import customerRequestRouter from './customerRequest.routes';
+import qrPaymentRouter from './qrPayment.routes';
 
 const rootRouter = Router();
 
 rootRouter.use('/', healthRoutes);
 rootRouter.use('/upload', uploadRouter);
 rootRouter.use('/customer-requests', customerRequestRouter);
+rootRouter.use('/qr-pay', qrPaymentRouter);
 rootRouter.use('/auth', authRouter);
 rootRouter.use('/orders', orderRouter);
 rootRouter.use('/tables', tableRouter);

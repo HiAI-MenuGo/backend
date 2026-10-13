@@ -447,8 +447,10 @@ export class CashierController {
       emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
       emitToTenant(dbSession.tenantId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
 
-      // QR guest của đúng bàn cũng nhận thanh toán hoàn tất
+      // QR guest của đúng bàn cũng nhận thanh toán hoàn tất và dọn sạch bộ nhớ bàn
       if (dbSession.tableId) {
+        emitToTable(dbSession.tableId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
+        emitToTable(dbSession.tableId, 'table:reset' as any, { tableId: dbSession.tableId, status: TableStatus.EMPTY });
         emitToTable(dbSession.tableId, SOCKET_EVENTS.PAYMENT_COMPLETED, {
           sessionId: dbSession.id,
           tableId: dbSession.tableId,
@@ -706,8 +708,10 @@ export class CashierController {
       emitToBranch(branchId, SOCKET_EVENTS.SESSION_UPDATED, webhookSessionPayload);
       emitToTenant(session.tenantId, SOCKET_EVENTS.SESSION_UPDATED, webhookSessionPayload);
 
-      // QR guest của đúng bàn cũng nhận thanh toán hoàn tất
+      // QR guest của đúng bàn cũng nhận thanh toán hoàn tất và dọn sạch bộ nhớ bàn
       if (session.tableId) {
+        emitToTable(session.tableId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, webhookTablePayload);
+        emitToTable(session.tableId, 'table:reset' as any, { tableId: session.tableId, status: TableStatus.EMPTY });
         emitToTable(session.tableId, SOCKET_EVENTS.PAYMENT_COMPLETED, {
           sessionId: session.id,
           tableId: session.tableId,
@@ -839,6 +843,8 @@ export class CashierController {
       emitToTenant(activeSession.tenantId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
 
       if (activeSession.tableId) {
+        emitToTable(activeSession.tableId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, tableStatusPayload);
+        emitToTable(activeSession.tableId, 'table:reset' as any, { tableId: activeSession.tableId, status: TableStatus.EMPTY });
         emitToTable(activeSession.tableId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentPayload);
         emitToTable(activeSession.tableId, SOCKET_EVENTS.SESSION_UPDATED, sessionUpdatedPayload);
       }

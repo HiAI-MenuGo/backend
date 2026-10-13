@@ -62,7 +62,6 @@ export interface TableStatusChangedPayload {
   tableName?: string;
   status: 'EMPTY' | 'OCCUPIED' | 'RESERVED';
   branchId?: string;
-  currentSessionId?: string;
   scannedCustomerCount?: number;
 }
 

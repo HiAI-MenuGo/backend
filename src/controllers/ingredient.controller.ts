@@ -45,7 +45,7 @@ export class IngredientController {
 
   static async createIngredient(req: Request, res: Response) {
     try {
-      const { name, quantity, unit, lowStockThreshold, category } = req.body;
+      const { name, quantity, unit, lowStockThreshold } = req.body;
       const { tenantId, branchId } = getTenantContext(req);
 
       if (!name || quantity === undefined || !unit) {
@@ -55,7 +55,7 @@ export class IngredientController {
       const item = await InventoryService.addIngredient(
         tenantId,
         branchId,
-        { name, quantity: Number(quantity), unit, lowStockThreshold: Number(lowStockThreshold) || 5, category }
+        { name, quantity: Number(quantity), unit, lowStockThreshold: Number(lowStockThreshold) || 5 }
       );
       return ApiResponse.success(res, item, 'Thêm nguyên liệu mới thành công');
     } catch (err: any) {

@@ -186,18 +186,18 @@ async function main() {
 
   // Main Dining Tables 1-12 matching Screenshot 2
   const mainDiningTables = [
-    { code: 'Table #1', name: 'Table #1 (Main Dining)', capacity: 6, status: TableStatus.EMPTY },
-    { code: 'Table #2', name: 'Table #2 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
-    { code: 'Table #3', name: 'Table #3 (Main Dining)', capacity: 2, status: TableStatus.RESERVED },
-    { code: 'Table #4', name: 'Table #4 (Main Dining)', capacity: 3, status: TableStatus.OCCUPIED },
-    { code: 'Table #5', name: 'Table #5 (Main Dining)', capacity: 2, status: TableStatus.EMPTY },
-    { code: 'Table #6', name: 'Table #6 (Main Dining)', capacity: 7, status: TableStatus.EMPTY },
-    { code: 'Table #7', name: 'Table #7 (Main Dining)', capacity: 10, status: TableStatus.EMPTY },
-    { code: 'Table #8', name: 'Table #8 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
-    { code: 'Table #9', name: 'Table #9 (Main Dining)', capacity: 4, status: TableStatus.OCCUPIED },
-    { code: 'Table #10', name: 'Table #10 (Main Dining)', capacity: 2, status: TableStatus.OCCUPIED },
-    { code: 'Table #11', name: 'Table #11 (Main Dining)', capacity: 2, status: TableStatus.RESERVED },
-    { code: 'Table #12', name: 'Table #12 (Main Dining)', capacity: 8, status: TableStatus.EMPTY },
+    { code: 'Table #1', name: 'Table #1', capacity: 6, status: TableStatus.EMPTY },
+    { code: 'Table #2', name: 'Table #2', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #3', name: 'Table #3', capacity: 2, status: TableStatus.RESERVED },
+    { code: 'Table #4', name: 'Table #4', capacity: 3, status: TableStatus.OCCUPIED },
+    { code: 'Table #5', name: 'Table #5', capacity: 2, status: TableStatus.EMPTY },
+    { code: 'Table #6', name: 'Table #6', capacity: 7, status: TableStatus.EMPTY },
+    { code: 'Table #7', name: 'Table #7', capacity: 10, status: TableStatus.EMPTY },
+    { code: 'Table #8', name: 'Table #8', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #9', name: 'Table #9', capacity: 4, status: TableStatus.OCCUPIED },
+    { code: 'Table #10', name: 'Table #10', capacity: 2, status: TableStatus.OCCUPIED },
+    { code: 'Table #11', name: 'Table #11', capacity: 2, status: TableStatus.RESERVED },
+    { code: 'Table #12', name: 'Table #12', capacity: 8, status: TableStatus.EMPTY },
   ];
 
   const tableMap = new Map<string, any>();
@@ -212,13 +212,11 @@ async function main() {
       update: {
         name: t.name,
         capacity: t.capacity,
-        areaId: mainDining.id,
         status: t.status,
       },
       create: {
         tenantId: tenant.id,
         branchId: branch.id,
-        areaId: mainDining.id,
         code: t.code,
         name: t.name,
         capacity: t.capacity,
@@ -230,10 +228,10 @@ async function main() {
 
   // Terrace & Outdoor Tables
   const otherTables = [
-    { code: 'Terrace #1', name: 'Bàn T-01 (Terrace)', capacity: 4, areaId: terrace.id, status: TableStatus.EMPTY },
-    { code: 'Terrace #2', name: 'Bàn T-02 (Terrace)', capacity: 4, areaId: terrace.id, status: TableStatus.EMPTY },
-    { code: 'Outdoor #1', name: 'Bàn O-01 (Outdoor)', capacity: 6, areaId: outdoor.id, status: TableStatus.EMPTY },
-    { code: 'Outdoor #2', name: 'Bàn O-02 (Outdoor)', capacity: 8, areaId: outdoor.id, status: TableStatus.EMPTY },
+    { code: 'Terrace #1', name: 'Bàn T-01', capacity: 4, status: TableStatus.EMPTY },
+    { code: 'Terrace #2', name: 'Bàn T-02', capacity: 4, status: TableStatus.EMPTY },
+    { code: 'Outdoor #1', name: 'Bàn O-01', capacity: 6, status: TableStatus.EMPTY },
+    { code: 'Outdoor #2', name: 'Bàn O-02', capacity: 8, status: TableStatus.EMPTY },
   ];
 
   for (const t of otherTables) {
@@ -247,13 +245,11 @@ async function main() {
       update: {
         name: t.name,
         capacity: t.capacity,
-        areaId: t.areaId,
         status: t.status,
       },
       create: {
         tenantId: tenant.id,
         branchId: branch.id,
-        areaId: t.areaId,
         code: t.code,
         name: t.name,
         capacity: t.capacity,
@@ -262,7 +258,7 @@ async function main() {
     });
     tableMap.set(t.code, record);
   }
-  console.log(`✅ Seeded 16 Tables across 3 Areas (Main Dining, Terrace, Outdoor)`);
+  console.log(`✅ Seeded 16 Tables`);
 
   // ==========================================
   // 5. MENU CATEGORIES (From FE INITIAL_CATEGORIES)

@@ -157,6 +157,8 @@ model TenantBranding {
   wifiSsid        String?
   wifiPassword    String?
   footerText      String?
+  enablePaymentCall Boolean @default(true)
+  enableStaffCall   Boolean @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import ApiResponse from '../utils/response';
 import { resolveTableScope } from '../utils/tableScope';
 import { getIO } from '../socket';
+import prisma from '../utils/prisma';
 import fs from 'fs';
 import path from 'path';
 
@@ -200,6 +201,23 @@ export class CustomerRequestController {
       const branchId = scope?.branchId || 'default-branch';
       const finalTableName = tableName || scope?.tableName || `Bàn ${tableId}`;
 
+      // Tôn trọng công tắc bật/tắt ở Cài đặt (TenantBranding)
+      const callType = type === 'PAYMENT' ? 'PAYMENT' : 'STAFF';
+      try {
+        const branding = await prisma.tenantBranding.findUnique({
+          where: { tenantId },
+          select: { enablePaymentCall: true, enableStaffCall: true },
+        });
+        if (callType === 'PAYMENT' && branding && branding.enablePaymentCall === false) {
+          return ApiResponse.error(res, 'FEATURE_DISABLED', 'Quán đã tắt tính năng gọi thanh toán', 403);
+        }
+        if (callType === 'STAFF' && branding && branding.enableStaffCall === false) {
+          return ApiResponse.error(res, 'FEATURE_DISABLED', 'Quán đã tắt tính năng gọi nhân viên', 403);
+        }
+      } catch {
+        // Bỏ qua khi DB chưa migrate kịp — mặc định cho phép gọi
+      }
+
       const newCall: ServiceCallItem = {
         id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         tenantId,
@@ -388,6 +406,12 @@ export class CustomerRequestController {
       if (branchId && branchId !== 'ALL') {
         reviews = reviews.filter((r) => r.branchId === branchId);
       }
+
+      // Hiển thị toàn bộ đánh giá từ trước đến giờ: KHÔNG lọc theo ngày,
+      // chỉ sắp xếp mới nhất lên đầu để dễ theo dõi.
+      reviews = [...reviews].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
       const totalReviews = reviews.length;
       const ratingCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
