@@ -83,12 +83,7 @@ export class TableQrController {
         return ApiResponse.error(res, 'INVALID_QR', 'Mã QR bàn không hợp lệ', 400);
       }
 
-      // Khách quét QR -> tự động chuyển trạng thái bàn thành OCCUPIED (Đang có khách)
-      try {
-        await TableController.occupyTableInternal(payload.tableId, payload.branchId);
-      } catch (occupyErr) {
-        logger.warn('resolveQrToken: auto occupy table failed', { error: occupyErr });
-      }
+      // Bàn chỉ chuyển sang có khách (OCCUPIED) khi khách thực sự đặt món qua order
 
       return ApiResponse.success(
         res,

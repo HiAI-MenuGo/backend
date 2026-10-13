@@ -1,7 +1,7 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import rootRouter from './routes';
@@ -17,8 +17,6 @@ import { initSocketServer } from './socket';
 process.env.TZ = 'Asia/Ho_Chi_Minh';
 // Force Node.js to use GMT+7 for all Date operations
 // This affects: new Date(), Date.now(), toISOString(), toLocaleString(), etc.
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;

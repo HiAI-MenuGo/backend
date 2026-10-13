@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ApiResponse from '../utils/response';
-import { emitToBranch, SOCKET_EVENTS } from '../socket';
+import { emitToBranch, emitToTable, SOCKET_EVENTS } from '../socket';
 import { getTenantContext } from '../middlewares/tenantIsolation';
 
 import { resolveTableScope } from '../utils/tableScope';
@@ -10,19 +10,17 @@ export interface TableItem {
   name: string;
   status: 'EMPTY' | 'OCCUPIED';
   branchId: string;
-  currentSessionId?: string;
   customerCount?: number;
   scannedCustomerCount?: number;
-  totalAmount?: number;
   updatedAt: string;
 }
 
 let tables: TableItem[] = [
   { id: 'tbl-01', name: 'Bàn 01', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
-  { id: 'tbl-02', name: 'Bàn 02', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-02', customerCount: 3, scannedCustomerCount: 1, totalAmount: 125000, updatedAt: new Date().toISOString() },
+  { id: 'tbl-02', name: 'Bàn 02', status: 'OCCUPIED', branchId: 'default-branch', customerCount: 3, scannedCustomerCount: 1, updatedAt: new Date().toISOString() },
   { id: 'tbl-03', name: 'Bàn 03', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
   { id: 'tbl-04', name: 'Bàn 04', status: 'EMPTY', branchId: 'default-branch', customerCount: 4, scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
-  { id: 'tbl-05', name: 'Bàn 05', status: 'OCCUPIED', branchId: 'default-branch', currentSessionId: 'sess-05', customerCount: 2, scannedCustomerCount: 1, totalAmount: 90000, updatedAt: new Date().toISOString() },
+  { id: 'tbl-05', name: 'Bàn 05', status: 'OCCUPIED', branchId: 'default-branch', customerCount: 2, scannedCustomerCount: 1, updatedAt: new Date().toISOString() },
   { id: 'tbl-06', name: 'Bàn 06', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
   { id: 'tbl-07', name: 'Bàn 07', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
   { id: 'tbl-08', name: 'Bàn 08', status: 'EMPTY', branchId: 'default-branch', scannedCustomerCount: 0, updatedAt: new Date().toISOString() },
@@ -221,7 +219,7 @@ export class TableController {
           if (status === 'EMPTY') {
             try {
               await prisma.orderSession.updateMany({
-                where: { tableId: owned.id, status: 'OPEN' },
+                where: { tableId: owned.id, status: { in: ['OPEN', 'BILLING'] } },
                 data: { status: 'CLOSED', closedAt: new Date() },
               });
             } catch {
@@ -248,8 +246,6 @@ export class TableController {
       if (memTable) {
         memTable.status = status;
         if (status === 'EMPTY') {
-          memTable.currentSessionId = undefined;
-          memTable.totalAmount = 0;
           memTable.scannedCustomerCount = 0;
         } else if (status === 'OCCUPIED') {
           memTable.scannedCustomerCount = memTable.scannedCustomerCount || 1;
@@ -273,6 +269,22 @@ export class TableController {
         scannedCustomerCount: status === 'EMPTY' ? 0 : 1,
         updatedAt: new Date().toISOString(),
       });
+
+      // Phát WebSocket cho phòng bàn (tất cả khách đang quét QR bàn đó) để đồng bộ và xóa cache
+      emitToTable(updatedTable.id, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+        tableId: updatedTable.id,
+        status,
+        scannedCustomerCount: status === 'EMPTY' ? 0 : 1,
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (status === 'EMPTY') {
+        emitToTable(updatedTable.id, 'table:reset' as any, {
+          tableId: updatedTable.id,
+          status: 'EMPTY',
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
       return ApiResponse.success(res, updatedTable, 'Cập nhật trạng thái bàn thành công');
     } catch (err: any) {

@@ -414,7 +414,12 @@ export class SessionOrderService {
               tableName: result.table.name,
               status: 'OCCUPIED',
               branchId: result.branchId,
-              currentSessionId: result.session.id,
+            });
+            emitToTable(result.table.id, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {
+              tableId: result.table.id,
+              tableName: result.table.name,
+              status: 'OCCUPIED',
+              branchId: result.branchId,
             });
           }
 

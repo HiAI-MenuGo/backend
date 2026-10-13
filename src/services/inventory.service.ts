@@ -7,7 +7,6 @@ export interface Ingredient {
   quantity: number;
   unit: string;
   lowStockThreshold: number;
-  category: string;
   branchId: string;
   branchName?: string;
   branchCode?: string;
@@ -30,7 +29,6 @@ function toDTO(row: {
     quantity: row.currentStock,
     unit: row.unit,
     lowStockThreshold: row.minStock,
-    category: '',
     branchId: row.branchId,
     branchName: row.branch?.name,
     branchCode: row.branch?.code,
@@ -127,7 +125,7 @@ export class InventoryService {
   static async addIngredient(
     tenantId: string,
     branchId: string,
-    data: { name: string; quantity: number; unit: string; lowStockThreshold: number; category?: string }
+    data: { name: string; quantity: number; unit: string; lowStockThreshold: number }
   ): Promise<Ingredient> {
     let targetBranchId = branchId;
     if (!targetBranchId || targetBranchId === 'ALL') {

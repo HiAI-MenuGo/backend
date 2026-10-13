@@ -46,6 +46,8 @@ export class BrandingController {
           bankAccountName: true,
           wifiSsid: true,
           footerText: true,
+          enablePaymentCall: true,
+          enableStaffCall: true,
           tenant: {
             select: {
               name: true,
@@ -186,6 +188,8 @@ export class BrandingController {
           bankAccountName: true,
           wifiSsid: true,
           footerText: true,
+          enablePaymentCall: true,
+          enableStaffCall: true,
           tenant: { select: { name: true, code: true, slug: true, status: true } },
         },
       });
@@ -235,6 +239,8 @@ export class BrandingController {
         bankCode,
         bankAccountNo,
         bankAccountName,
+        enablePaymentCall,
+        enableStaffCall,
       } = req.body;
 
       if (restaurantName !== undefined && typeof restaurantName === 'string' && restaurantName.trim()) {
@@ -269,6 +275,8 @@ export class BrandingController {
           ...(bankCode !== undefined && { bankCode }),
           ...(bankAccountNo !== undefined && { bankAccountNo }),
           ...(bankAccountName !== undefined && { bankAccountName }),
+          ...(enablePaymentCall !== undefined && { enablePaymentCall: Boolean(enablePaymentCall) }),
+          ...(enableStaffCall !== undefined && { enableStaffCall: Boolean(enableStaffCall) }),
         },
         create: {
           tenantId,
@@ -283,6 +291,8 @@ export class BrandingController {
           bankCode,
           bankAccountNo,
           bankAccountName,
+          enablePaymentCall: enablePaymentCall !== undefined ? Boolean(enablePaymentCall) : true,
+          enableStaffCall: enableStaffCall !== undefined ? Boolean(enableStaffCall) : true,
         },
         include: {
           tenant: { select: { name: true, code: true, slug: true, status: true } },
