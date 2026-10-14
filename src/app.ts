@@ -28,9 +28,16 @@ initSocketServer(httpServer);
 // Rate limiter: 2000 requests per 15 minutes as specified in TECHS.md
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 2000,
+  max: process.env.NODE_ENV === 'development' ? 50000 : 2000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Bỏ qua health check và socket polling
+    if (req.path === '/api/health' || req.path === '/health' || req.path.startsWith('/socket.io')) {
+      return true;
+    }
+    return false;
+  },
   message: {
     success: false,
     errorCode: 'TOO_MANY_REQUESTS',
@@ -41,18 +48,19 @@ const limiter = rateLimit({
 import path from 'path';
 
 // Security & Parsing Middlewares
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  })
-);
-app.use(limiter);
+// CORS phải đứng trước limiter và helmet để các response lỗi (429, 404, 500) luôn có header Access-Control-Allow-Origin
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   })
 );
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+app.use(limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

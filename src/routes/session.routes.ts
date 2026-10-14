@@ -23,7 +23,12 @@ sessionRouter.get(
 );
 
 // QR payment page: khách xem phiên của đúng bàn mình (public, scope theo tableId, không lộ bàn khác)
-sessionRouter.get('/:tableId/active', qrMenuRateLimit, CashierController.getActiveSessionByTable);
+sessionRouter.get(
+  '/:tableId/active',
+  qrMenuRateLimit,
+  validateTableSession,
+  CashierController.getActiveSessionByTable
+);
 
 // QR Menu Session Order (Public endpoint - no auth required, but with rate limiting & table validation)
 sessionRouter.post(
