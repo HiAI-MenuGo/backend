@@ -11,6 +11,7 @@ import ApiResponse from '../utils/response';
 import { VietQRService } from '../services/payment/vietqr.service';
 import { emitToBranch, emitToTenant, emitToTable, SOCKET_EVENTS } from '../socket';
 import logger from '../utils/logger';
+import { resolveTableScope } from '../utils/tableScope';
 
 export interface PendingSessionItem {
   id: string;
@@ -141,10 +142,14 @@ export class CashierController {
    */
   static async getActiveSessionByTable(req: Request, res: Response) {
     try {
-      const { tableId } = req.params;
-      if (!tableId) {
+      const rawTableId = (req as any).tableContext?.tableId || req.params.tableId;
+      if (!rawTableId) {
         return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu tableId', 400);
       }
+
+      // Hỗ trợ cả UUID thật, JWT QR standee, và mã bàn như "3", "tbl-03"
+      const scope = await resolveTableScope(rawTableId);
+      const tableId = scope?.tableId || rawTableId;
 
       // Public QR: chỉ trả phiên của đúng bàn được hỏi (tableId UUID không đoán được).
       // Kiểm tra bàn tồn tại + active để không lộ session của bàn đã xóa.
