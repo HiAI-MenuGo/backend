@@ -68,6 +68,7 @@ export class TableController {
           id: t.id,
           name: t.name,
           status: (t.status === 'RESERVED' ? 'OCCUPIED' : t.status) as 'EMPTY' | 'OCCUPIED',
+          tenantId: t.tenantId,
           branchId: t.branchId,
           branchName: t.branch?.name,
           branchCode: t.branch?.code,
@@ -94,10 +95,13 @@ export class TableController {
   /**
    * Chuyển trạng thái bàn sang OCCUPIED khi khách quét mã QR truy cập
    */
-  static async occupyTableInternal(rawTableId: string, preferredBranchId?: string) {
+  static async occupyTableInternal(rawTableId: string, preferredBranchId?: string, preferredTenantId?: string) {
     if (!rawTableId) return null;
 
-    const scope = await resolveTableScope(rawTableId);
+    const scope = await resolveTableScope(rawTableId, {
+      tenantId: preferredTenantId && preferredTenantId !== 'default-tenant' ? preferredTenantId : undefined,
+      branchId: preferredBranchId && preferredBranchId !== 'default-branch' ? preferredBranchId : undefined,
+    });
     const targetId = scope ? scope.tableId : rawTableId;
     const targetBranch = scope ? scope.branchId : (preferredBranchId || 'default-branch');
 
@@ -149,12 +153,12 @@ export class TableController {
    */
   static async occupyTable(req: Request, res: Response) {
     try {
-      const { tableId, branchId } = req.body;
+      const { tableId, branchId, tenantId } = req.body;
       if (!tableId) {
         return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu thông tin bàn', 400);
       }
 
-      const result = await TableController.occupyTableInternal(tableId, branchId);
+      const result = await TableController.occupyTableInternal(tableId, branchId, tenantId);
       return ApiResponse.success(res, result, 'Bàn đã chuyển sang trạng thái đang có khách');
     } catch (err: any) {
       return ApiResponse.error(res, 'OCCUPY_TABLE_ERROR', err.message, 500);

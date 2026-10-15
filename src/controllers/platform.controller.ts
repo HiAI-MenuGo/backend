@@ -31,7 +31,6 @@ export class PlatformController {
           branding: {
             select: {
               logoUrl: true,
-              primaryColor: true,
             },
           },
           _count: {
@@ -66,7 +65,6 @@ export class PlatformController {
         ownerPassword,
         plan = 'STARTER',
         branchName = 'Chi Nhánh Mặc Định',
-        primaryColor = '#f59e0b',
       } = req.body;
 
       if (!code || !name || !ownerEmail || !ownerPassword) {
@@ -104,10 +102,7 @@ export class PlatformController {
             plan: plan as SubscriptionPlan,
             status: TenantStatus.ACTIVE,
             branding: {
-              create: {
-                primaryColor,
-                secondaryColor: '#d97706',
-              },
+              create: {},
             },
           },
         });

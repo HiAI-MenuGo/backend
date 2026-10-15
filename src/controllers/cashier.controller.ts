@@ -12,6 +12,7 @@ import { VietQRService } from '../services/payment/vietqr.service';
 import { emitToBranch, emitToTenant, emitToTable, SOCKET_EVENTS } from '../socket';
 import logger from '../utils/logger';
 import { resolveTableScope } from '../utils/tableScope';
+import { NotificationController } from './notification.controller';
 
 export interface PendingSessionItem {
   id: string;
@@ -147,8 +148,12 @@ export class CashierController {
         return ApiResponse.error(res, 'MISSING_TABLE_ID', 'Thiếu tableId', 400);
       }
 
-      // Hỗ trợ cả UUID thật, JWT QR standee, và mã bàn như "3", "tbl-03"
-      const scope = await resolveTableScope(rawTableId);
+      const qTenant = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || undefined;
+      const qBranch = (req.query.branchId as string) || (req.headers['x-branch-id'] as string) || undefined;
+      const scope = await resolveTableScope(rawTableId, {
+        tenantId: qTenant && qTenant !== 'default-tenant' ? qTenant : undefined,
+        branchId: qBranch && qBranch !== 'default-branch' && qBranch !== 'ALL' ? qBranch : undefined,
+      });
       const tableId = scope?.tableId || rawTableId;
 
       // Public QR: chỉ trả phiên của đúng bàn được hỏi (tableId UUID không đoán được).
@@ -434,6 +439,21 @@ export class CashierController {
       };
       emitToBranch(branchId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentCompletedPayload);
       emitToTenant(dbSession.tenantId, SOCKET_EVENTS.PAYMENT_COMPLETED, paymentCompletedPayload);
+
+      // Lưu notification thanh toán vào hệ thống
+      try {
+        NotificationController.createNotification({
+          tenantId: dbSession.tenantId,
+          branchId,
+          title: `Thanh toán thành công: ${dbSession.table?.name || 'Khách hàng'}`,
+          message: `Đã thu ${Number(totalAmount).toLocaleString('vi-VN')} đ • ${paymentMethod === 'VIETQR' ? 'VietQR' : 'Tiền mặt'} (Hoàn tất đơn)`,
+          time: 'Vừa xong',
+          type: 'PAYMENT',
+          isRead: false,
+        });
+      } catch (notiErr) {
+        logger.warn('[CashierController] createNotification failed:', notiErr);
+      }
 
       const tableStatusPayload = {
         tableId: dbSession.tableId,

@@ -83,11 +83,28 @@ export class TableQrController {
         return ApiResponse.error(res, 'INVALID_QR', 'Mã QR bàn không hợp lệ', 400);
       }
 
-      // Bàn chỉ chuyển sang có khách (OCCUPIED) khi khách thực sự đặt món qua order
+      let tableName: string | null = null;
+      let tableCode: string | null = null;
+      const dbTable = await prisma.table
+        .findUnique({
+          where: { id: payload.tableId },
+          select: { name: true, code: true },
+        })
+        .catch(() => null);
+      if (dbTable) {
+        tableName = dbTable.name;
+        tableCode = dbTable.code;
+      }
 
       return ApiResponse.success(
         res,
-        { tableId: payload.tableId, tenantId: payload.tenantId, branchId: payload.branchId || null },
+        {
+          tableId: payload.tableId,
+          tenantId: payload.tenantId,
+          branchId: payload.branchId || null,
+          tableName,
+          tableCode,
+        },
         'Định danh bàn thành công'
       );
     } catch (error: any) {

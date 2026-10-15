@@ -6,15 +6,11 @@ import { enforceTenantIsolation } from '../middlewares/tenantIsolation';
 import validate from '../middlewares/validate';
 import { qrMenuRateLimit } from '../middlewares/qrRateLimit';
 
-const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Màu phải dạng hex #rgb/#rrggbb');
 const updateBrandingSchema = z.object({
   body: z.object({
     restaurantName: z.string().optional(),
     logoUrl: z.string().url().optional(),
     bannerUrl: z.string().url().optional(),
-    primaryColor: hexColor.optional(),
-    secondaryColor: hexColor.optional(),
-    accentColor: hexColor.optional(),
     wifiSsid: z.string().optional(),
     wifiPassword: z.string().optional(),
     footerText: z.string().optional(),

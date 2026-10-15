@@ -8,27 +8,43 @@ export interface TableScope {
   tenantId: string;
   branchId: string;
   tableName?: string;
+  tableCode?: string;
 }
 
 /**
  * Phân giải tableId thô từ QR (UUID thật, JWT đã ký, hoặc mã bàn rút gọn như "3", "tbl-03") thành scope tenant/branch.
  * - Ưu tiên tra DB trực tiếp theo id.
+ * - Nếu có hints.tenantId / hints.branchId thì bắt buộc phải khớp tenant/branch, chặn leak sang quán khác.
  * - Nếu không thấy, thử verify JWT (QR standee mã hóa) rồi tra DB theo payload.tableId.
- * - Nếu là mã bàn rút gọn ("3", "tbl-03", "Bàn 3"), tra DB theo tên/số bàn.
- * - Fallback: lấy bàn hoạt động của tenant active để đảm bảo QR luôn mở được.
+ * - Nếu là mã bàn rút gọn ("3", "tbl-03", "Bàn 3"), tra DB theo tên/số bàn trong đúng phạm vi tenant/branch.
+ * - Fallback: lấy bàn hoạt động của chính tenant đó (không bao giờ leak sang tenant khác).
  */
-export async function resolveTableScope(input: string): Promise<TableScope | null> {
+export async function resolveTableScope(
+  input: string,
+  hints?: { tenantId?: string; branchId?: string }
+): Promise<TableScope | null> {
   if (!input) return null;
+
+  const filterTenantId = hints?.tenantId && hints.tenantId !== 'default-tenant' ? hints.tenantId : undefined;
+  const filterBranchId = hints?.branchId && hints.branchId !== 'default-branch' && hints.branchId !== 'ALL' ? hints.branchId : undefined;
 
   // 1. Tra cứu trực tiếp theo UUID / id
   const byId = await prisma.table
     .findUnique({
       where: { id: input },
-      select: { id: true, tenantId: true, branchId: true, name: true, isActive: true },
+      select: { id: true, tenantId: true, branchId: true, name: true, code: true, isActive: true },
     })
     .catch(() => null);
   if (byId && byId.isActive) {
-    return { tableId: byId.id, tenantId: byId.tenantId, branchId: byId.branchId, tableName: byId.name };
+    if (!filterTenantId || byId.tenantId === filterTenantId) {
+      return {
+        tableId: byId.id,
+        tenantId: byId.tenantId,
+        branchId: byId.branchId,
+        tableName: byId.name,
+        tableCode: byId.code,
+      };
+    }
   }
 
   // 2. Thử giải mã JWT nếu là QR standee mã hóa
@@ -38,11 +54,19 @@ export async function resolveTableScope(input: string): Promise<TableScope | nul
       const table = await prisma.table
         .findUnique({
           where: { id: String(payload.tableId) },
-          select: { id: true, tenantId: true, branchId: true, name: true, isActive: true },
+          select: { id: true, tenantId: true, branchId: true, name: true, code: true, isActive: true },
         })
         .catch(() => null);
       if (table && table.isActive) {
-        return { tableId: table.id, tenantId: table.tenantId, branchId: table.branchId, tableName: table.name };
+        if (!filterTenantId || table.tenantId === filterTenantId) {
+          return {
+            tableId: table.id,
+            tenantId: table.tenantId,
+            branchId: table.branchId,
+            tableName: table.name,
+            tableCode: table.code,
+          };
+        }
       }
     }
   } catch {
@@ -54,55 +78,93 @@ export async function resolveTableScope(input: string): Promise<TableScope | nul
   const tableNum = numMatch ? parseInt(numMatch[0], 10) : null;
 
   if (tableNum !== null) {
-    // Tìm bàn khớp số (Table #3, Bàn 3, v.v.)
-    const byName = await prisma.table.findFirst({
-      where: {
-        isActive: true,
-        OR: [
-          { name: { contains: `#${tableNum}` } },
-          { name: { contains: `#0${tableNum}` } },
-          { name: { contains: `Bàn ${tableNum}` } },
-          { name: { contains: `Bàn 0${tableNum}` } },
-          { name: { contains: `Table ${tableNum}` } },
-          { name: { contains: ` ${tableNum} ` } },
-        ],
-      },
-      select: { id: true, tenantId: true, branchId: true, name: true },
-    }).catch(() => null);
+    const whereNum: any = {
+      isActive: true,
+      OR: [
+        { code: { equals: input, mode: 'insensitive' } },
+        { name: { equals: input, mode: 'insensitive' } },
+        { name: { contains: `#${tableNum}` } },
+        { name: { contains: `#0${tableNum}` } },
+        { name: { contains: `Bàn ${tableNum}` } },
+        { name: { contains: `Bàn 0${tableNum}` } },
+        { name: { contains: `Table ${tableNum}` } },
+        { name: { contains: ` ${tableNum} ` } },
+        { code: { contains: `${tableNum}` } },
+      ],
+    };
+    if (filterTenantId) whereNum.tenantId = filterTenantId;
+    if (filterBranchId) whereNum.branchId = filterBranchId;
+
+    const byName = await prisma.table
+      .findFirst({
+        where: whereNum,
+        select: { id: true, tenantId: true, branchId: true, name: true, code: true },
+        orderBy: { createdAt: 'asc' },
+      })
+      .catch(() => null);
 
     if (byName) {
-      return { tableId: byName.id, tenantId: byName.tenantId, branchId: byName.branchId, tableName: byName.name };
+      return {
+        tableId: byName.id,
+        tenantId: byName.tenantId,
+        branchId: byName.branchId,
+        tableName: byName.name,
+        tableCode: byName.code,
+      };
     }
   }
 
   // Thử tìm theo chuỗi tên không phân biệt hoa thường
-  const byString = await prisma.table.findFirst({
-    where: {
-      isActive: true,
-      name: { contains: input, mode: 'insensitive' },
-    },
-    select: { id: true, tenantId: true, branchId: true, name: true },
-  }).catch(() => null);
+  const whereStr: any = {
+    isActive: true,
+    OR: [
+      { name: { contains: input, mode: 'insensitive' } },
+      { code: { contains: input, mode: 'insensitive' } },
+    ],
+  };
+  if (filterTenantId) whereStr.tenantId = filterTenantId;
+  if (filterBranchId) whereStr.branchId = filterBranchId;
+
+  const byString = await prisma.table
+    .findFirst({
+      where: whereStr,
+      select: { id: true, tenantId: true, branchId: true, name: true, code: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    .catch(() => null);
 
   if (byString) {
-    return { tableId: byString.id, tenantId: byString.tenantId, branchId: byString.branchId, tableName: byString.name };
+    return {
+      tableId: byString.id,
+      tenantId: byString.tenantId,
+      branchId: byString.branchId,
+      tableName: byString.name,
+      tableCode: byString.code,
+    };
   }
 
-  // 4. Fallback an toàn: lấy bàn active đầu tiên trong CSDL
-  const fallbackTable = await prisma.table.findFirst({
-    where: {
-      isActive: true,
-    },
-    select: { id: true, tenantId: true, branchId: true, name: true },
-  }).catch(() => null);
+  // 4. Fallback an toàn: CHỈ fallback trong cùng tenant nếu có hint (không leak sang công ty khác)
+  if (filterTenantId) {
+    const fallbackTenantWhere: any = { isActive: true, tenantId: filterTenantId };
+    if (filterBranchId) fallbackTenantWhere.branchId = filterBranchId;
 
-  if (fallbackTable) {
-    return {
-      tableId: fallbackTable.id,
-      tenantId: fallbackTable.tenantId,
-      branchId: fallbackTable.branchId,
-      tableName: fallbackTable.name,
-    };
+    const fallbackTable = await prisma.table
+      .findFirst({
+        where: fallbackTenantWhere,
+        select: { id: true, tenantId: true, branchId: true, name: true, code: true },
+        orderBy: { createdAt: 'asc' },
+      })
+      .catch(() => null);
+
+    if (fallbackTable) {
+      return {
+        tableId: fallbackTable.id,
+        tenantId: fallbackTable.tenantId,
+        branchId: fallbackTable.branchId,
+        tableName: fallbackTable.name,
+        tableCode: fallbackTable.code,
+      };
+    }
   }
 
   return null;

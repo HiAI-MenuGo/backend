@@ -27,9 +27,6 @@ async function main() {
   const brandingData = {
     logoUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop',
     bannerUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&h=400&fit=crop',
-    primaryColor: '#00A389', // Tasty Station Turquoise
-    secondaryColor: '#FF7A59', // Coral Orange
-    accentColor: '#A855F7', // Lavender Purple
     bankCode: 'VCB',
     bankAccountNo: '1028391829',
     bankAccountName: 'IBRAHIM KADRI',
@@ -746,6 +743,45 @@ async function main() {
     });
   }
   console.log(`✅ Seeded Promotional Vouchers (TASTY2026, WELCOME5)`);
+
+  // ==========================================
+  // INVENTORY INGREDIENTS
+  // ==========================================
+  const initialIngredients = [
+    { code: 'ING-ROBUSTA', name: 'Hạt Cà Phê Robusta', currentStock: 18.5, minStock: 5.0, unit: 'kg' },
+    { code: 'ING-SUADAC', name: 'Sữa Đặc Ngôi Sao', currentStock: 12, minStock: 15, unit: 'lon' },
+    { code: 'ING-TRAOOLONG', name: 'Trà Xanh Oolong', currentStock: 3.2, minStock: 4.0, unit: 'kg' },
+    { code: 'ING-SUATUOI', name: 'Sữa Tươi Thanh Trùng Barista', currentStock: 24, minStock: 10, unit: 'hộp 1L' },
+    { code: 'ING-DUONGMIA', name: 'Đường Mía Tự Nhiên', currentStock: 45, minStock: 10, unit: 'kg' },
+    { code: 'ING-TRANCHAU', name: 'Trân Châu Trắng 3Q', currentStock: 2.5, minStock: 5.0, unit: 'kg' },
+  ];
+
+  for (const item of initialIngredients) {
+    await prisma.ingredient.upsert({
+      where: {
+        branchId_code: {
+          branchId: branch.id,
+          code: item.code,
+        },
+      },
+      update: {
+        name: item.name,
+        currentStock: item.currentStock,
+        minStock: item.minStock,
+        unit: item.unit,
+      },
+      create: {
+        tenantId: tenant.id,
+        branchId: branch.id,
+        code: item.code,
+        name: item.name,
+        currentStock: item.currentStock,
+        minStock: item.minStock,
+        unit: item.unit,
+      },
+    });
+  }
+  console.log(`✅ Seeded Inventory Ingredients for Tasty Station`);
 
   console.log('🎉 Seed completed successfully into database!');
 }
