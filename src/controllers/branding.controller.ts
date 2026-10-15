@@ -7,7 +7,6 @@ import logger from '../utils/logger';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_hiai_menugo_2026';
 
-const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export class BrandingController {
   /**
@@ -38,9 +37,6 @@ export class BrandingController {
           tenantId: true,
           logoUrl: true,
           bannerUrl: true,
-          primaryColor: true,
-          secondaryColor: true,
-          accentColor: true,
           bankCode: true,
           bankAccountNo: true,
           bankAccountName: true,
@@ -120,9 +116,19 @@ export class BrandingController {
       const tableId = (req.query.tableId as string) || '';
       let branch: any = null;
       let resolvedTenantId = authTenant || '';
+      let resolvedTableName: string | null = null;
+      let resolvedTableCode: string | null = null;
+      let qTenant = (req.query.tenantId as string) || '';
+      if (qTenant === 'default-tenant') qTenant = '';
+      // Staff đã login: ép tenant theo token, bỏ qua tenantId query lạ
+      if (authTenant) qTenant = authTenant;
+      const branchIdParam = (req.query.branchId as string) || '';
 
       if (tableId) {
-        const scope = await resolveTableScope(tableId);
+        const scope = await resolveTableScope(tableId, {
+          tenantId: qTenant || undefined,
+          branchId: branchIdParam && branchIdParam !== 'default-branch' && branchIdParam !== 'ALL' ? branchIdParam : undefined,
+        });
         if (!scope) {
           return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Bàn không tồn tại', 404);
         }
@@ -132,15 +138,12 @@ export class BrandingController {
           return ApiResponse.error(res, 'TABLE_NOT_FOUND', 'Bàn không tồn tại', 404);
         }
         resolvedTenantId = scope.tenantId;
+        resolvedTableName = scope.tableName || null;
+        resolvedTableCode = scope.tableCode || null;
         branch = await prisma.branch.findFirst({
           where: { id: scope.branchId, tenantId: scope.tenantId, isActive: true },
         });
       } else {
-        const branchIdParam = (req.query.branchId as string) || '';
-        let qTenant = (req.query.tenantId as string) || '';
-        if (qTenant === 'default-tenant') qTenant = '';
-        // Staff đã login: ép tenant theo token, bỏ qua tenantId query lạ
-        if (authTenant) qTenant = authTenant;
 
         if (branchIdParam && branchIdParam !== 'default-branch') {
           // QR ẩn danh chỉ gửi branch code mà không rõ tenant -> từ chối
@@ -180,9 +183,6 @@ export class BrandingController {
           tenantId: true,
           logoUrl: true,
           bannerUrl: true,
-          primaryColor: true,
-          secondaryColor: true,
-          accentColor: true,
           bankCode: true,
           bankAccountNo: true,
           bankAccountName: true,
@@ -204,6 +204,8 @@ export class BrandingController {
         branchName: branch?.name || null,
         branchCode: branch?.code || null,
         branchId: branch?.id || null,
+        tableName: resolvedTableName,
+        tableCode: resolvedTableCode,
         address: branch?.address || '170 Bàu Cát, Phường 14, Tân Bình, Hồ Chí Minh',
         phone: branch?.phone || null,
       };
@@ -230,9 +232,6 @@ export class BrandingController {
         restaurantName,
         logoUrl,
         bannerUrl,
-        primaryColor,
-        secondaryColor,
-        accentColor,
         wifiSsid,
         wifiPassword,
         footerText,
@@ -250,12 +249,6 @@ export class BrandingController {
         });
       }
 
-      for (const [key, val] of Object.entries({ primaryColor, secondaryColor, accentColor })) {
-        if (val && !HEX_COLOR.test(String(val))) {
-          return ApiResponse.error(res, 'INVALID_COLOR', `Màu ${key} không đúng định dạng hex (#rgb/#rrggbb)`, 400);
-        }
-      }
-
       const finalLogoUrl =
         logoUrl !== undefined ? (logoUrl && String(logoUrl).trim() ? String(logoUrl).trim() : null) : undefined;
       const finalBannerUrl =
@@ -266,9 +259,6 @@ export class BrandingController {
         update: {
           ...(finalLogoUrl !== undefined && { logoUrl: finalLogoUrl }),
           ...(finalBannerUrl !== undefined && { bannerUrl: finalBannerUrl }),
-          ...(primaryColor && { primaryColor }),
-          ...(secondaryColor && { secondaryColor }),
-          ...(accentColor && { accentColor }),
           ...(wifiSsid !== undefined && { wifiSsid }),
           ...(wifiPassword !== undefined && { wifiPassword }),
           ...(footerText !== undefined && { footerText }),
@@ -282,9 +272,6 @@ export class BrandingController {
           tenantId,
           logoUrl: finalLogoUrl !== undefined ? finalLogoUrl : null,
           bannerUrl: finalBannerUrl !== undefined ? finalBannerUrl : null,
-          primaryColor: primaryColor || '#f59e0b',
-          secondaryColor: secondaryColor || '#d97706',
-          accentColor: accentColor || '#fbbf24',
           wifiSsid,
           wifiPassword,
           footerText,

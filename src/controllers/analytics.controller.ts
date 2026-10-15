@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { AnalyticsService } from '../services/analytics.service';
+import { getTenantContext } from '../middlewares/tenantIsolation';
 import ApiResponse from '../utils/response';
 import logger from '../utils/logger';
 
@@ -36,6 +37,25 @@ export const revenueQuerySchema = z.object({
   }),
 });
 
+/**
+ * Resolve branch cho analytics: ưu tiên tenantContext đã được middleware enforce.
+ * Chỉ ADMIN/PLATFORM_ADMIN được chỉ định branchId khác; role thường luôn dùng branch của mình.
+ */
+function resolveAnalyticsBranch(req: Request): { branchId: string; tenantId: string } {
+  const ctx = getTenantContext(req);
+  const role = (req as any).user?.role;
+  const qBranch = req.query.branchId as string | undefined;
+  if (
+    qBranch &&
+    qBranch !== '' &&
+    qBranch !== 'default-branch' &&
+    (role === 'ADMIN' || role === 'PLATFORM_ADMIN')
+  ) {
+    return { branchId: qBranch, tenantId: ctx.tenantId };
+  }
+  return { branchId: ctx.branchId, tenantId: ctx.tenantId };
+}
+
 export class AnalyticsController {
   /**
    * GET /api/analytics/overview
@@ -43,9 +63,8 @@ export class AnalyticsController {
    */
   static async getOverview(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
+      const { branchId, tenantId } = resolveAnalyticsBranch(req);
       const date = req.query.date as string | undefined;
-      const tenantId = req.user?.tenantId;
 
       const overview = await AnalyticsService.getOverview({
         branchId,
@@ -69,10 +88,9 @@ export class AnalyticsController {
    */
   static async getRevenueReport(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
+      const { branchId, tenantId } = resolveAnalyticsBranch(req);
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
-      const tenantId = req.user?.tenantId;
 
       const report = await AnalyticsService.getRevenueReport({
         branchId,
@@ -97,10 +115,9 @@ export class AnalyticsController {
    */
   static async exportRevenueExcel(req: Request, res: Response) {
     try {
-      const branchId = (req.query.branchId as string) || req.user?.branchId;
+      const { branchId, tenantId } = resolveAnalyticsBranch(req);
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
-      const tenantId = req.user?.tenantId;
 
       const report = await AnalyticsService.getRevenueReport({
         branchId,

@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { SOCKET_EVENTS, SocketEventType } from './events';
+import logger from '../utils/logger';
 
 export interface SocketUser {
   userId?: string;
@@ -57,7 +58,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
           socket.data.authenticated = true;
           return next();
         } catch (jwtErr) {
-          console.warn(`[Socket.IO] JWT verification failed, checking dev mode fallback...`);
+          logger.warn(`[Socket.IO] JWT verification failed, checking dev mode fallback...`);
         }
       }
 
@@ -71,14 +72,14 @@ export function initSocketServer(httpServer: HttpServer): Server {
       socket.data.authenticated = false;
       return next();
     } catch (err: any) {
-      console.error('[Socket.IO] Auth Middleware Error:', err.message);
+      logger.error('[Socket.IO] Auth Middleware Error:', err.message);
       return next(new Error('Authentication failed'));
     }
   });
 
   io.on('connection', (socket: Socket) => {
     const user = socket.user;
-    console.log(`⚡ [Socket.IO] Client connected: ${socket.id} (tenant: ${user?.tenantId}, branch: ${user?.branchId})`);
+    logger.info(`⚡ [Socket.IO] Client connected: ${socket.id} (tenant: ${user?.tenantId}, branch: ${user?.branchId})`);
 
     const isGuest = !socket.data?.authenticated && user?.role === 'GUEST';
     // GUEST (QR khách, không JWT): chỉ join room bàn của mình.
@@ -107,26 +108,46 @@ export function initSocketServer(httpServer: HttpServer): Server {
 
     // Lắng nghe yêu cầu gọi phục vụ / gọi thanh toán từ bàn QR
     socket.on('call_staff:request', (payload) => {
-      console.log(`🛎️ [Socket.IO] Call staff request received from ${socket.id}:`, payload);
+      logger.info(`🛎️ [Socket.IO] Call staff request received from ${socket.id}:`, payload);
       if (user?.tenantId) io?.to(`tenant:${user.tenantId}`).emit('call_staff:request', payload);
       if (user?.branchId) io?.to(`branch:${user.branchId}`).emit('call_staff:request', payload);
-      io?.emit('call_staff:request', payload);
     });
 
     // Lắng nghe đánh giá của khách hàng từ bàn QR
     socket.on('review:new', (payload) => {
-      console.log(`⭐ [Socket.IO] Customer review received from ${socket.id}:`, payload);
+      logger.info(`⭐ [Socket.IO] Customer review received from ${socket.id}:`, payload);
       if (user?.tenantId) io?.to(`tenant:${user.tenantId}`).emit('review:new', payload);
       if (user?.branchId) io?.to(`branch:${user.branchId}`).emit('review:new', payload);
-      io?.emit('review:new', payload);
+    });
+
+    // Cho phép đổi chi nhánh phòng realtime mà không cần ngắt kết nối
+    // Verify: branch mới phải thuộc cùng tenant của token, guest không được switch
+    socket.on('branch:switch', async (newBranchId: string) => {
+      if (!newBranchId || !socket.data?.authenticated || !user?.tenantId) return;
+      try {
+        const { prisma } = await import('../utils/prisma');
+        const branch = await prisma.branch.findUnique({ where: { id: newBranchId } });
+        if (!branch || branch.tenantId !== user.tenantId) return;
+        if (user.role !== 'ADMIN' && user.role !== 'PLATFORM_ADMIN' && user.role !== 'MANAGER' && newBranchId !== user.branchId) return;
+      } catch {
+        return;
+      }
+      if (user?.branchId) {
+        socket.leave(`branch:${user.branchId}`);
+      }
+      if (user) {
+        user.branchId = newBranchId;
+      }
+      socket.join(`branch:${newBranchId}`);
+      logger.info(`🔀 [Socket.IO] Client ${socket.id} switched room to branch:${newBranchId}`);
     });
 
     socket.on('disconnect', (reason) => {
-      console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id} (${reason})`);
+      logger.info(`🔌 [Socket.IO] Client disconnected: ${socket.id} (${reason})`);
     });
   });
 
-  console.log('✅ [Socket.IO] Server initialized successfully');
+  logger.info('✅ [Socket.IO] Server initialized successfully');
   return io;
 }
 

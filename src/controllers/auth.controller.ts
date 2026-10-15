@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import ApiResponse from '../utils/response';
+import prisma from '../utils/prisma';
 import { AuthService, AuthUserRecord } from '../services/auth.service';
 
 const loginSchema = z.object({
@@ -70,11 +71,13 @@ export class AuthController {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
+        phone: dbUser.phone,
         passwordHash: dbUser.passwordHash,
         role: dbUser.role as AuthUserRecord['role'],
         tenantId: dbUser.tenantId,
         branchId: dbUser.branchId || '',
         isActive: dbUser.isActive,
+        branch: dbUser.branch,
       };
       return ApiResponse.success(res, AuthService.toPublic(user), 'Lấy thông tin tài khoản thành công');
     } catch (err: unknown) {
@@ -101,6 +104,68 @@ export class AuthController {
         return ApiResponse.error(res, 'WEAK_PASSWORD', 'Mật khẩu mới quá yếu (tối thiểu 6 ký tự)', 400);
       }
       return ApiResponse.error(res, 'CHANGE_PASSWORD_ERROR', msg, 500);
+    }
+  }
+
+  static async updateProfile(req: Request, res: Response) {
+    try {
+      if (!req.user) return ApiResponse.error(res, 'UNAUTHORIZED', 'Chưa xác thực', 401);
+      const { name, phone, branchId } = req.body;
+      const userId = req.user.userId;
+
+      // 1. Prisma user
+      const dbUser = await prisma.tenantUser.findUnique({ where: { id: userId } });
+      if (dbUser) {
+        // Validate chi nhánh nếu có truyền lên (chỉ ADMIN / PLATFORM_ADMIN)
+        if (branchId !== undefined && branchId !== null && branchId !== '') {
+          if (req.user.role !== 'ADMIN' && req.user.role !== 'PLATFORM_ADMIN') {
+            return ApiResponse.error(res, 'FORBIDDEN', 'Chỉ tài khoản Quản trị viên (Admin) mới có quyền chuyển chi nhánh', 403);
+          }
+          const targetBranch = await prisma.branch.findFirst({
+            where: { id: branchId, tenantId: dbUser.tenantId, isActive: true },
+          });
+          if (!targetBranch) {
+            return ApiResponse.error(res, 'BRANCH_NOT_FOUND', 'Chi nhánh không hợp lệ hoặc đã ngừng hoạt động', 400);
+          }
+        }
+
+        const updated = await prisma.tenantUser.update({
+          where: { id: userId },
+          data: {
+            ...(name ? { name: String(name).trim() } : {}),
+            ...(phone !== undefined ? { phone: phone ? String(phone).trim() : null } : {}),
+            ...(branchId !== undefined ? { branchId: branchId || null } : {}),
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true,
+            tenantId: true,
+            branchId: true,
+            isActive: true,
+            branch: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                address: true,
+              },
+            },
+          },
+        });
+        return ApiResponse.success(res, updated, 'Cập nhật hồ sơ thành công');
+      }
+
+      // 2. In-memory user
+      const user = AuthService.findById(userId);
+      if (!user) return ApiResponse.error(res, 'USER_NOT_FOUND', 'Không tìm thấy tài khoản', 404);
+      if (name) user.name = String(name).trim();
+      if (branchId !== undefined) user.branchId = branchId || '';
+      return ApiResponse.success(res, AuthService.toPublic(user), 'Cập nhật hồ sơ thành công');
+    } catch (err: unknown) {
+      return ApiResponse.error(res, 'UPDATE_PROFILE_ERROR', (err as Error).message, 500);
     }
   }
 

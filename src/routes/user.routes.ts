@@ -31,9 +31,9 @@ const router = Router();
 
 router.use(authMiddleware, enforceTenantIsolation);
 
-// Quản lý nhân viên yêu cầu quyền ADMIN hoặc MANAGER
-router.get('/roles', requireRole(['ADMIN', 'MANAGER']), UserController.getRoles);
-router.get('/', requireRole(['ADMIN', 'MANAGER']), UserController.getUsers);
+// Quản lý nhân viên: xem danh sách cho phép ADMIN, MANAGER, CASHIER
+router.get('/roles', requireRole(['ADMIN', 'MANAGER', 'CASHIER']), UserController.getRoles);
+router.get('/', requireRole(['ADMIN', 'MANAGER', 'CASHIER']), UserController.getUsers);
 router.post('/', requireRole(['ADMIN']), validate(createUserSchema), UserController.createUser);
 router.patch('/:id', requireRole(['ADMIN']), validate(updateUserSchema), UserController.updateUser);
 router.delete('/:id', requireRole(['ADMIN']), UserController.deleteUser);

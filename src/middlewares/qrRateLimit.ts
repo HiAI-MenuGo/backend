@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/prisma';
 import { resolveTableScope } from '../utils/tableScope';
+import logger from '../utils/logger';
 
 interface RateLimitStore {
   [key: string]: { count: number; resetTime: number };
@@ -114,7 +115,7 @@ export async function validateTableSession(req: Request, res: Response, next: Ne
 
     next();
   } catch (err) {
-    console.error('[validateTableSession] Error:', err);
+    logger.error('[validateTableSession] Error:', err);
     return res.status(500).json({
       success: false,
       errorCode: 'VALIDATION_ERROR',

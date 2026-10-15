@@ -34,6 +34,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
 import { resolveTableScope } from '../utils/tableScope';
 import { getTenantContext } from '../middlewares/tenantIsolation';
+import logger from '../utils/logger';
 
 export class MenuController {
   /**
@@ -71,11 +72,18 @@ export class MenuController {
         }
       }
 
+      const qTenant = (req.query.tenantId as string) || undefined;
+      const qBranch =
+        (req.query.branchId as string) || (req.headers['x-branch-id'] as string) || undefined;
+
       // 3. Thử derive từ tableId (khách quét QR bàn)
       if (!tenantId) {
         const tableId = (req.query.tableId as string) || (req.query.table as string);
         if (tableId) {
-          const scope = await resolveTableScope(tableId);
+          const scope = await resolveTableScope(tableId, {
+            tenantId: qTenant && qTenant !== 'default-tenant' ? qTenant : undefined,
+            branchId: qBranch && qBranch !== 'default-branch' && qBranch !== 'ALL' ? qBranch : undefined,
+          });
           if (scope) {
             tenantId = scope.tenantId;
             branchId = scope.branchId;
@@ -85,10 +93,7 @@ export class MenuController {
 
       // 4. Thử derive từ query / headers (tenantId hoặc branchId)
       if (!tenantId) {
-        const qTenant = (req.query.tenantId as string) || undefined;
-        const qBranch =
-          (req.query.branchId as string) || (req.headers['x-branch-id'] as string) || undefined;
-        if (qTenant) {
+        if (qTenant && qTenant !== 'default-tenant') {
           tenantId = qTenant;
           branchId = qBranch;
         } else if (qBranch && qBranch !== 'default-branch' && qBranch !== 'ALL') {
@@ -261,7 +266,7 @@ export class MenuController {
           include: { category: true }
         });
       } catch (dbErr) {
-        console.warn('Prisma createMenuItem fallback to memory:', dbErr);
+        logger.warn('Prisma createMenuItem fallback to memory:', dbErr);
       }
 
       const item: MenuItemBackend = {
@@ -358,7 +363,7 @@ export class MenuController {
           });
         }
       } catch (dbErr) {
-        console.warn('Prisma updateMenuItem fallback:', dbErr);
+        logger.warn('Prisma updateMenuItem fallback:', dbErr);
       }
 
       // Cập nhật in-memory fallback

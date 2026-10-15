@@ -148,9 +148,6 @@ model TenantBranding {
   tenantId        String   @unique
   logoUrl         String?
   bannerUrl       String?
-  primaryColor    String   @default("#f59e0b") // Amber 500
-  secondaryColor  String   @default("#d97706") // Amber 600
-  accentColor     String   @default("#fbbf24")
   bankCode        String? // e.g. "MB", "VCB"
   bankAccountNo   String?
   bankAccountName String?

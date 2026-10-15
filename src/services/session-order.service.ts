@@ -2,6 +2,7 @@ import { prisma } from '../utils/prisma';
 import logger from '../utils/logger';
 import { emitToBranch, emitToTable, SOCKET_EVENTS } from '../socket';
 import { VoucherQuoteService } from './voucher-quote.service';
+import { NotificationController } from '../controllers/notification.controller';
 
 /**
  * Get current date in GMT+7 (Asia/Ho_Chi_Minh) as YYYYMMDD string
@@ -407,6 +408,21 @@ export class SessionOrderService {
             })),
             createdAt: result.order.createdAt.toISOString(),
           });
+
+          // Tự động tạo và lưu notification cho hệ thống và mobile app
+          try {
+            NotificationController.createNotification({
+              tenantId: result.order.tenantId,
+              branchId: result.branchId,
+              title: `Đơn hàng mới: ${result.order.orderCode}`,
+              message: `Bàn ${result.table.name} • ${result.order.items.length} món • ${Number(result.order.totalAmount).toLocaleString('vi-VN')} đ`,
+              time: 'Vừa xong',
+              type: 'ORDER',
+              isRead: false,
+            });
+          } catch (notiErr) {
+            logger.warn('[SessionOrderService] createNotification failed:', notiErr);
+          }
 
           if (result.tableStatusChanged) {
             emitToBranch(result.branchId, SOCKET_EVENTS.TABLE_STATUS_CHANGED, {

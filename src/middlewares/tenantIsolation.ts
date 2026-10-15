@@ -122,7 +122,12 @@ export async function enforceTenantIsolation(req: Request, res: Response, next: 
   if (tableId) {
     try {
       const { resolveTableScope } = await import('../utils/tableScope');
-      const scope = await resolveTableScope(String(tableId));
+      const hintTenant = (req.headers['x-tenant-id'] as string) || req.query?.tenantId || req.body?.tenantId;
+      const hintBranch = (req.headers['x-branch-id'] as string) || req.query?.branchId || req.body?.branchId;
+      const scope = await resolveTableScope(String(tableId), {
+        tenantId: hintTenant && hintTenant !== 'default-tenant' ? String(hintTenant) : undefined,
+        branchId: hintBranch && hintBranch !== 'default-branch' && hintBranch !== 'ALL' ? String(hintBranch) : undefined,
+      });
       if (scope) {
         const statusRow = await prisma.table
           .findUnique({ where: { id: scope.tableId }, select: { status: true } })
